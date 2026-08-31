@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+<title>等时圈通勤工具</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    #app { display: flex; height: 100%; }
+    #container { flex: 1; height: 100%; }
+    #panel {
+        width: 380px; height: 100%; overflow-y: auto; background: #fff;
+        border-right: 1px solid #e5e7eb; padding: 14px 16px; flex-shrink: 0;
+    }
+    h1 { font-size: 17px; margin-bottom: 10px; }
+    h2 { font-size: 13px; color: #374151; margin: 14px 0 6px; }
+    section { border-bottom: 1px dashed #e5e7eb; padding-bottom: 12px; }
+    input[type=text], input[type=number], select, textarea {
+        width: 100%; border: 1px solid #d1d5db; border-radius: 5px;
+        padding: 4px 8px; font-size: 13px; margin: 3px 0; background: #fff;
+        font-family: inherit;
+    }
+    input[type=text], input[type=number], select { height: 30px; }
+    textarea { height: 90px; resize: vertical; }
+    button {
+        height: 30px; border: none; border-radius: 5px; padding: 0 12px;
+        font-size: 13px; cursor: pointer; background: #2563eb; color: #fff; margin: 3px 4px 3px 0;
+    }
+    button.ghost { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+    button.warn { background: #dc2626; }
+    button:disabled { background: #9ca3af; cursor: not-allowed; }
+    .row { display: flex; gap: 6px; align-items: center; }
+    .row > * { flex: 1; }
+    .row > button, .row > label { flex: 0 0 auto; }
+    .hint { font-size: 12px; color: #6b7280; line-height: 1.6; margin: 4px 0; }
+    .chip {
+        display: flex; align-items: center; gap: 6px; border-radius: 6px;
+        padding: 5px 10px; font-size: 13px; margin-top: 4px;
+    }
+    .chip.A { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+    .chip.B { background: #fdf2f8; border: 1px solid #fbcfe8; color: #9d174d; }
+    .chip .x { margin-left: auto; cursor: pointer; color: #9ca3af; }
+    .circle-item {
+        display: flex; align-items: center; gap: 6px; font-size: 13px;
+        padding: 5px 6px; border: 1px solid #e5e7eb; border-radius: 6px; margin-top: 5px;
+    }
+    .dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+    .circle-item .label { flex: 1; }
+    .circle-item button { margin: 0; height: 24px; padding: 0 8px; font-size: 12px; }
+    .poi-item {
+        padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 6px;
+        margin-top: 5px; font-size: 13px; cursor: pointer;
+    }
+    .poi-item:hover { background: #f9fafb; }
+    .poi-item .meta { font-size: 12px; color: #6b7280; margin-top: 2px; }
+    .poi-item .commute { font-size: 12px; margin-top: 3px; line-height: 1.7; }
+    .badge {
+        display: inline-block; font-size: 11px; border-radius: 3px; padding: 0 5px;
+        margin: 1px 3px 1px 0; color: #fff; background: #9ca3af;
+    }
+    .badge.g { background: #059669; } .badge.y { background: #d97706; }
+    .badge.o { background: #ea580c; } .badge.r { background: #dc2626; }
+    .poi-item .tags span {
+        display: inline-block; font-size: 11px; border-radius: 3px; padding: 0 5px;
+        margin: 2px 3px 0 0; color: #fff;
+    }
+    .src-tag { font-size: 11px; color: #7c3aed; border: 1px solid #ddd6fe; border-radius: 3px; padding: 0 4px; margin-left: 4px; }
+    #toast {
+        position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+        background: rgba(17,24,39,.9); color: #fff; padding: 8px 18px; border-radius: 6px;
+        font-size: 13px; z-index: 999; display: none; max-width: 80%;
+    }
+    details summary { font-size: 12px; color: #6b7280; cursor: pointer; }
+    footer { font-size: 11px; color: #9ca3af; line-height: 1.7; padding-top: 10px; }
+    .mdot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.45); }
+    #keyModal {
+        position: fixed; inset: 0; background: rgba(0,0,0,.45);
+        display: none; align-items: center; justify-content: center; z-index: 1000;
+        padding: 16px;
+    }
+    #keyModal.show { display: flex; }
+    .modal-box {
+        background: #fff; border-radius: 10px; width: 100%; max-width: 420px;
+        padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,.2);
+    }
+    .modal-box h3 { font-size: 16px; margin-bottom: 10px; }
+    .modal-box p { font-size: 13px; color: #4b5563; line-height: 1.7; margin-bottom: 12px; }
+    .modal-box input { margin-bottom: 8px; }
+    .modal-box .actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+    @media (max-width: 768px) {
+        #app { flex-direction: column; }
+        #panel { width: 100%; height: 46%; border-right: none; border-bottom: 1px solid #e5e7eb; }
+        #container { height: 54%; }
+    }
+</style>
+</head>
+<body>
+<div id="app">
+    <aside id="panel">
+        <h1>⏱️ 等时圈通勤工具</h1>
+
+        <section>
+            <details>
+                <summary>高德密钥设置</summary>
+                <div style="margin-top:6px">
+                    <input type="text" id="keyInput" placeholder="JS API Key（Web端开发者类型）">
+                    <input type="text" id="codeInput" placeholder="安全密钥 securityJsCode">
+                    <button id="saveKeyBtn" class="ghost">保存并刷新</button>
+                    <div class="hint">申请：console.amap.com → 应用管理 → 创建 Key（服务平台选「Web端(JS API)」）。密钥保存在浏览器本地，不会上传服务器。</div>
+                </div>
+            </details>
+        </section>
+
+        <section>
+            <h2>① 起点位置（可设两个，方便双人/双地点对比）</h2>
+            <div class="row">
+                <label><input type="radio" name="cp" value="A" checked style="width:auto;height:auto"> 地点A</label>
+                <label><input type="radio" name="cp" value="B" style="width:auto;height:auto"> 地点B</label>
+                <span class="hint" style="margin:0">← 先选槽位再搜索/点图</span>
+            </div>
+            <input type="text" id="companyInput" placeholder="输入地点名 / 地址搜索，或直接点击地图选点">
+            <div id="chipBox"></div>
+        </section>
+
+        <section>
+            <h2>② 添加等时圈（可叠加多个）</h2>
+            <div class="row">
+                <select id="circleCompany" style="flex:0 0 90px">
+                    <option value="A">地点A</option>
+                    <option value="B">地点B</option>
+                </select>
+                <select id="mode">
+                    <option value="SUBWAY,BUS">地铁+公交（真实路网）</option>
+                    <option value="SUBWAY">地铁（真实路网）</option>
+                    <option value="BUS">公交（真实路网）</option>
+                    <option value="walk">步行（直线近似）</option>
+                    <option value="ride">骑行（直线近似）</option>
+                </select>
+                <input type="number" id="minutes" min="1" max="120" value="30" style="flex:0 0 64px">
+            </div>
+            <button id="addCircleBtn">＋ 添加等时圈</button>
+            <div id="circleList"></div>
+            <div class="row" style="margin-top:8px">
+                <select id="coord" style="flex:0 0 110px">
+                    <option value="WGS84">WGS84</option>
+                    <option value="GCJ02">GCJ02</option>
+                </select>
+                <button id="exportBtn" class="ghost">导出圈 GeoJSON</button>
+            </div>
+        </section>
+
+        <section>
+            <h2>③ 候选地点</h2>
+            <button id="searchPoiBtn">检索圈内地点</button>
+            <button id="batchBtn" class="ghost">批量算通勤</button>
+            <button id="clearPoiBtn" class="ghost">清空</button>
+            <details style="margin-top:4px">
+                <summary>导入自己的候选清单（每行一个地点名，可带城市，逗号分隔）</summary>
+                <textarea id="importText" placeholder="例如：&#10;保利天悦&#10;骏景花园,广州&#10;XX酒店,北京"></textarea>
+                <button id="importBtn" class="ghost">导入并定位</button>
+                <div class="hint">导入后自动判断是否在各等时圈内，再点「批量算通勤」。</div>
+            </details>
+            <div class="row" style="margin-top:8px">
+                <label class="hint" style="flex:0 0 auto">最长通勤 ≤</label>
+                <input type="number" id="filterMax" min="0" placeholder="不限" style="flex:0 0 64px">
+                <label class="hint" style="flex:0 0 auto">分钟</label>
+                <select id="sortBy">
+                    <option value="max">按最长通勤排序</option>
+                    <option value="A">按地点A通勤排序</option>
+                    <option value="B">按地点B通勤排序</option>
+                    <option value="dist">按直线距离排序</option>
+                </select>
+            </div>
+            <div class="row">
+                <button id="csvBtn" class="ghost">导出结果 CSV</button>
+                <span class="hint" id="poiCount" style="margin:0"></span>
+            </div>
+            <div id="poiList"></div>
+        </section>
+
+        <footer>
+            说明：步行/骑行圈为直线距离近似（步行≈2.8km/h、骑行≈9km/h）；地铁/公交圈来自高德到达圈（不含等车与换乘耗时），以「真实通勤时间」为最终依据。候选地点来自高德 POI 或手动导入。配色：≤30分钟 绿，≤45 黄，≤60 橙，&gt;60 红。
+        </footer>
+    </aside>
+    <div id="container"></div>
+</div>
+<div id="toast"></div>
+
+<div id="keyModal">
+    <div class="modal-box">
+        <h3>欢迎使用等时圈通勤工具</h3>
+        <p>本工具使用高德地图服务，需要你在本地配置高德 JS API Key 与安全密钥。密钥仅保存在浏览器 localStorage 中，不会上传到任何服务器。</p>
+        <p class="hint">如果你还没有密钥，可前往 <a href="https://console.amap.com" target="_blank">console.amap.com</a> 免费申请：应用管理 → 创建 Key → 服务平台选「Web端(JS API)」。</p>
+        <input type="text" id="modalKey" placeholder="JS API Key">
+        <input type="text" id="modalCode" placeholder="安全密钥 securityJsCode">
+        <div class="hint">也可以把密钥填入仓库的 <code>config.yaml</code> 后重新部署（公开仓库请谨慎，配置文件仍会被浏览器访问）。</div>
+        <div class="actions">
+            <button id="modalSaveBtn">保存并开始使用</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ============ 配置与密钥管理 ============ */
+function parseYAML(text) {
+    var out = {};
+    text.split(/\r?\n/).forEach(function (line) {
+        var idx = line.indexOf(':');
+        if (idx < 0 || line.trim().startsWith('#')) return;
+        var key = line.slice(0, idx).trim();
+        var val = line.slice(idx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+        }
+        out[key] = val;
+    });
+    return out;
+}
+
+var AMAP_KEY = '';
+var AMAP_CODE = '';
+var PLACEHOLDER_KEY = 'YOUR_KEY_HERE';
+var MAP_CENTER = [121.4997, 31.2397];   // 默认上海陆家嘴（GCJ-02）
+var MAP_ZOOM = 12;
+
+function parseMapView(centerStr, zoomStr) {
+    if (centerStr) {
+        var parts = centerStr.split(',').map(function (s) { return parseFloat(s.trim()); });
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            MAP_CENTER = parts;
+        }
+    }
+    if (zoomStr) {
+        var z = parseInt(zoomStr, 10);
+        if (!isNaN(z)) MAP_ZOOM = z;
+    }
+}
+
+function initKeys(cfgKey, cfgCode) {
+    var storedKey = localStorage.getItem('amap_key') || '';
+    var storedCode = localStorage.getItem('amap_code') || '';
+    AMAP_KEY = storedKey || cfgKey || '';
+    AMAP_CODE = storedCode || cfgCode || '';
+
+    document.getElementById('keyInput').value = AMAP_KEY;
+    document.getElementById('codeInput').value = AMAP_CODE;
+
+    if (!AMAP_KEY || !AMAP_CODE || AMAP_KEY === PLACEHOLDER_KEY) {
+        showKeyModal();
+    } else {
+        loadAMap();
+    }
+}
+
+function saveKeys(k, c) {
+    if (!k || !c) { toast('Key 和安全密钥都要填写'); return false; }
+    localStorage.setItem('amap_key', k);
+    localStorage.setItem('amap_code', c);
+    location.reload();
+    return true;
+}
+
+document.getElementById('saveKeyBtn').onclick = function () {
+    var k = document.getElementById('keyInput').value.trim();
+    var c = document.getElementById('codeInput').value.trim();
+    saveKeys(k, c);
+};
+
+function showKeyModal() {
+    document.getElementById('keyModal').classList.add('show');
+}
+function hideKeyModal() {
+    document.getElementById('keyModal').classList.remove('show');
+}
+
+document.getElementById('modalSaveBtn').onclick = function () {
+    var k = document.getElementById('modalKey').value.trim();
+    var c = document.getElementById('modalCode').value.trim();
+    if (saveKeys(k, c)) hideKeyModal();
+};
+
+/* 先读配置再加载地图 */
+fetch('config.yaml')
+    .then(function (r) { return r.text(); })
+    .then(function (text) {
+        var cfg = parseYAML(text);
+        parseMapView(cfg.map_center, cfg.map_zoom);
+        initKeys(cfg.amap_key, cfg.amap_code);
+    })
+    .catch(function () {
+        initKeys('', '');
+    });
+
+function toast(msg, ms) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function () { t.style.display = 'none'; }, ms || 2500);
+}
+
+/* ============ 动态加载高德 JSAPI 2.0 ============ */
+function loadAMap() {
+    window._AMapSecurityConfig = { securityJsCode: AMAP_CODE };
+    var _s = document.createElement('script');
+    _s.src = 'https://webapi.amap.com/maps?v=2.0&key=' + encodeURIComponent(AMAP_KEY);
+    _s.onload = function () {
+        AMap.plugin([
+            'AMap.ArrivalRange', 'AMap.PlaceSearch', 'AMap.AutoComplete',
+            'AMap.Transfer', 'AMap.Walking', 'AMap.Riding', 'AMap.Geocoder'
+        ], initApp);
+    };
+    _s.onerror = function () { toast('高德 JSAPI 加载失败，请检查 Key 与安全密钥', 5000); };
+    document.head.appendChild(_s);
+}
+
+/* ============ 全局状态 ============ */
+var map, arrivalRange, walkingSearch, ridingSearch, geocoder, subwaySearch;
+var companies = { A: null, B: null };   // {name, lnglat, marker}
+var cityName = '';
+var circles = [];                        // {id,companyId,label,mode,minutes,color,approx,polygons,overlays}
+var communities = {};                    // key -> {poi,marker,circleIds:Set,source,data:{},dom}
+var circleSeq = 0;
+var PALETTE = ['#2563eb', '#ea580c', '#059669', '#7c3aed', '#d97706', '#dc2626', '#0891b2', '#be185d'];
+var MODE_LABEL = { 'SUBWAY,BUS': '地铁+公交', 'SUBWAY': '地铁', 'BUS': '公交', 'walk': '步行', 'ride': '骑行' };
+var infoWindow = null;
+
+function initApp() {
+    map = new AMap.Map('container', {
+        center: MAP_CENTER,
+        zoom: MAP_ZOOM,
+        mapStyle: 'amap://styles/whitesmoke'
+    });
+    map.on('click', function (e) {
+        var slot = document.querySelector('input[name=cp]:checked').value;
+        setCompany(slot, e.lnglat, '地图选点 ' + e.lnglat.toString());
+    });
+
+    var autoComplete = new AMap.AutoComplete({ input: 'companyInput' });
+    autoComplete.on('select', function (e) {
+        var slot = document.querySelector('input[name=cp]:checked').value;
+        if (e.poi && e.poi.location) {
+            setCompany(slot, e.poi.location, e.poi.name);
+        } else if (e.poi && e.poi.name) {
+            var ps = new AMap.PlaceSearch({ city: e.poi.district || '', citylimit: true });
+            ps.search(e.poi.name, function (status, result) {
+                if (status === 'complete' && result.poiList && result.poiList.pois.length) {
+                    var p = result.poiList.pois[0];
+                    setCompany(slot, p.location, p.name);
+                } else { toast('未找到该地址坐标'); }
+            });
+        }
+    });
+
+    arrivalRange = new AMap.ArrivalRange();
+    walkingSearch = new AMap.Walking();
+    ridingSearch = new AMap.Riding();
+    geocoder = new AMap.Geocoder();
+    subwaySearch = new AMap.PlaceSearch({ type: '150500', pageSize: 1, extensions: 'base' });
+    // IP 定位兜底城市名（公交路径规划需要 city 参数）
+    map.getCity(function (info) { if (!cityName && info.city) cityName = info.city; });
+
+    document.getElementById('addCircleBtn').onclick = onAddCircle;
+    document.getElementById('exportBtn').onclick = exportGeoJSON;
+    document.getElementById('searchPoiBtn').onclick = searchCommunities;
+    document.getElementById('batchBtn').onclick = batchCommute;
+    document.getElementById('clearPoiBtn').onclick = clearCommunities;
+    document.getElementById('importBtn').onclick = importCandidates;
+    document.getElementById('csvBtn').onclick = exportCSV;
+    document.getElementById('filterMax').oninput = renderPoiList;
+    document.getElementById('sortBy').onchange = renderPoiList;
+
+    restoreState();
+}
+
+/* ============ 起点位置 ============ */
+function setCompany(slot, lnglat, name, skipSave) {
+    var old = companies[slot];
+    if (old && old.marker) old.marker.setMap(null);
+    // 清掉该地点名下的等时圈
+    circles.filter(function (c) { return c.companyId === slot; }).forEach(function (c) {
+        c.overlays.forEach(function (o) { o.setMap(null); });
+    });
+    circles = circles.filter(function (c) { return c.companyId !== slot; });
+    renderCircleList();
+    afterCirclesChanged(false);
+
+    var marker = new AMap.Marker({
+        map: map, position: lnglat, zIndex: 200,
+        label: { content: '📍 地点' + slot, direction: 'top' }
+    });
+    companies[slot] = { name: name, lnglat: lnglat, marker: marker };
+    renderChips();
+    map.setZoomAndCenter(13, lnglat);
+
+    // 逆地理取城市名，供后续检索限定城市
+    geocoder.getAddress(lnglat, function (status, result) {
+        if (status === 'complete' && result.regeocode) {
+            var ac = result.regeocode.addressComponent;
+            cityName = (typeof ac.city === 'string' && ac.city) ? ac.city : ac.province;
+        }
+    });
+    if (!skipSave) saveState();
+}
+
+function removeCompany(slot) {
+    var c = companies[slot];
+    if (!c) return;
+    c.marker.setMap(null);
+    companies[slot] = null;
+    circles.filter(function (x) { return x.companyId === slot; }).forEach(function (x) {
+        x.overlays.forEach(function (o) { o.setMap(null); });
+    });
+    circles = circles.filter(function (x) { return x.companyId !== slot; });
+    renderCircleList();
+    renderChips();
+    afterCirclesChanged(true);
+    saveState();
+}
+
+function renderChips() {
+    var box = document.getElementById('chipBox');
+    box.innerHTML = '';
+    ['A', 'B'].forEach(function (slot) {
+        var c = companies[slot];
+        if (!c) return;
+        var div = document.createElement('div');
+        div.className = 'chip ' + slot;
+        div.innerHTML = '<span>📍 <b>' + slot + '</b>：' + c.name + '</span><span class="x">✕</span>';
+        div.querySelector('.x').onclick = function () { removeCompany(slot); };
+        box.appendChild(div);
+    });
+    if (!companies.A && !companies.B) {
+        box.innerHTML = '<div class="hint">尚未设置起点位置</div>';
+    }
+}
+
+/* ============ 等时圈 ============ */
+function onAddCircle() {
+    var companyId = document.getElementById('circleCompany').value;
+    var mode = document.getElementById('mode').value;
+    var minutes = parseInt(document.getElementById('minutes').value, 10);
+    addCircleFrom(companyId, mode, minutes);
+}
+
+function addCircleFrom(companyId, mode, minutes, skipSave) {
+    var comp = companies[companyId];
+    if (!comp) { toast('请先设置地点' + companyId); return; }
+    var isTransit = (mode !== 'walk' && mode !== 'ride');
+    if (!minutes || minutes < 1 || minutes > (isTransit ? 60 : 120)) {
+        toast(isTransit ? '地铁/公交圈时长需为 1-60 分钟' : '步行/骑行圈时长需为 1-120 分钟');
+        return;
+    }
+    var color = PALETTE[circleSeq % PALETTE.length];
+    var circle = {
+        id: ++circleSeq,
+        companyId: companyId,
+        label: '地点' + companyId + ' · ' + MODE_LABEL[mode] + ' ' + minutes + ' 分钟' + (isTransit ? '' : '(近似)'),
+        mode: mode, minutes: minutes, color: color, approx: !isTransit,
+        polygons: [], overlays: []
+    };
+    circles.push(circle);
+    renderCircleList();
+
+    if (!isTransit) {
+        var speedKmH = (mode === 'walk') ? 2.8 : 9;
+        var radius = minutes / 60 * speedKmH * 1000;
+        var ring = circleRing(comp.lnglat, radius, 72);
+        circle.polygons = [[ring]];
+        addPolygonOverlay(circle, [ring]);
+        fitCircle(circle);
+        afterCirclesChanged(false);
+    } else {
+        toast('到达圈查询中…');
+        arrivalRange.search(comp.lnglat, minutes, function (status, result) {
+            // 注意：JSAPI 2.0 的 ArrivalRange 成功时 status 也可能返回 'no_data'，
+            // 必须以 result.bounds 为准（官方示例同样不检查 status）
+            if (!result || !result.bounds || !result.bounds.length) {
+                toast('未获取到到达圈（status=' + status + '），可能该区域无公交覆盖或超出配额');
+                removeCircle(circle.id);
+                return;
+            }
+            for (var i = 0; i < result.bounds.length; i++) {
+                var rings = result.bounds[i].map(function (r) {
+                    // 兼容 LngLat 对象与 [lng,lat] 数组两种返回形态
+                    return r.map(function (p) {
+                        return (p.lng !== undefined) ? [p.lng, p.lat] : [p[0], p[1]];
+                    });
+                });
+                circle.polygons.push(rings);
+                addPolygonOverlay(circle, rings);
+            }
+            fitCircle(circle);
+            afterCirclesChanged(false);
+        }, { policy: mode });
+    }
+    if (!skipSave) saveState();
+}
+
+function addPolygonOverlay(circle, rings) {
+    var polygon = new AMap.Polygon({
+        path: rings,
+        fillColor: circle.color,
+        fillOpacity: 0.2,
+        strokeColor: circle.color,
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
+        zIndex: 50
+    });
+    polygon.setMap(map);
+    circle.overlays.push(polygon);
+}
+
+function fitCircle(circle) {
+    if (circle.overlays.length) {
+        // avoid 顺序为 [上, 下, 左, 右]，左侧面板避让 420px
+        map.setFitView(circle.overlays, false, [60, 60, 420, 60]);
+    }
+}
+
+function circleRing(center, radiusMeters, n) {
+    var ring = [];
+    var latRad = center.lat * Math.PI / 180;
+    for (var i = 0; i < n; i++) {
+        var a = 2 * Math.PI * i / n;
+        ring.push([
+            center.lng + radiusMeters * Math.cos(a) / (111320 * Math.cos(latRad)),
+            center.lat + radiusMeters * Math.sin(a) / 110540
+        ]);
+    }
+    return ring;
+}
+
+function renderCircleList() {
+    var box = document.getElementById('circleList');
+    box.innerHTML = '';
+    circles.forEach(function (c) {
+        var div = document.createElement('div');
+        div.className = 'circle-item';
+        div.innerHTML =
+            '<span class="dot" style="background:' + c.color + '"></span>' +
+            '<span class="label">' + c.label + '</span>' +
+            '<button class="ghost" data-act="toggle">显隐</button>' +
+            '<button class="warn" data-act="del">删</button>';
+        div.querySelector('[data-act=toggle]').onclick = function () {
+            c.overlays.forEach(function (o) { o.getMap() ? o.hide() : o.show(); });
+        };
+        div.querySelector('[data-act=del]').onclick = function () { removeCircle(c.id); saveState(); };
+        box.appendChild(div);
+    });
+}
+
+function removeCircle(id) {
+    var idx = circles.findIndex(function (c) { return c.id === id; });
+    if (idx < 0) return;
+    circles[idx].overlays.forEach(function (o) { o.setMap(null); });
+    circles.splice(idx, 1);
+    renderCircleList();
+    afterCirclesChanged(true);
+}
+
+function afterCirclesChanged(notify) {
+    // 圈变化：清除 POI 来源的地点（圈变了结果不再有效），保留导入的并重新计算归属
+    Object.keys(communities).forEach(function (k) {
+        var item = communities[k];
+        if (item.source === 'poi') {
+            item.marker.setMap(null);
+            delete communities[k];
+        }
+    });
+    refreshMembership();
+    renderPoiList();
+    if (notify && Object.keys(communities).length) {
+        toast('等时圈已变更，圈内归属已重新计算，POI 检索结果已清除');
+    }
+}
+
+/* ============ 几何：点是否在任一圈 ============ */
+function pointInRing(pt, ring) {
+    var inside = false;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        var xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+        if (((yi > pt[1]) !== (yj > pt[1])) &&
+            (pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+function circlesOf(lnglat) {
+    var pt = [lnglat.lng, lnglat.lat];
+    var ids = [];
+    circles.forEach(function (c) {
+        var hit = c.polygons.some(function (poly) { return pointInRing(pt, poly[0]); });
+        if (hit) ids.push(c.id);
+    });
+    return ids;
+}
+
+function refreshMembership() {
+    Object.values(communities).forEach(function (item) {
+        item.circleIds = new Set(circlesOf(item.poi.location));
+    });
+}
+
+/* ============ 候选地点：检索 / 导入 ============ */
+function poiKey(p) { return p.id || (p.name + '@' + p.location.lng + ',' + p.location.lat); }
+
+function addCommunity(poi, source) {
+    var key = poiKey(poi);
+    if (communities[key]) {
+        if (source === 'import') communities[key].source = 'import';
+        return communities[key];
+    }
+    var item = { poi: poi, source: source, circleIds: new Set(circlesOf(poi.location)), data: {}, dom: null };
+    item.marker = new AMap.Marker({
+        map: map,
+        position: poi.location,
+        zIndex: 100,
+        content: '<div class="mdot" style="background:#9ca3af"></div>',
+        offset: new AMap.Pixel(-7, -7),
+        title: poi.name
+    });
+    item.marker.on('click', function () {
+        map.panTo(poi.location);
+        computeCommute(item);
+    });
+    communities[key] = item;
+    return item;
+}
+
+function searchCommunities() {
+    if (!circles.length) { toast('请先添加至少一个等时圈'); return; }
+    // 按圈的外接矩形检索（调用次数少、不触限流），再用几何关系精确过滤到多边形内
+    var queue = circles.slice();
+    toast('正在检索圈内地点…', 60000);
+    (function nextCircle() {
+        if (!queue.length) {
+            renderPoiList();
+            toast('检索完成，共 ' + Object.keys(communities).length + ' 个候选地点');
+            return;
+        }
+        var c = queue.shift();
+        var bounds = boundsOfCircle(c);
+        rectSearchPaged(bounds, 1, [], function (pois) {
+            var added = 0;
+            pois.forEach(function (p) {
+                if (!p.location) return;
+                var pt = [p.location.lng, p.location.lat];
+                var inside = c.polygons.some(function (poly) { return pointInRing(pt, poly[0]); });
+                if (inside) { addCommunity(p, 'poi'); added++; }
+            });
+            toast('「' + c.label + '」命中 ' + added + ' 个，继续…', 60000);
+            setTimeout(nextCircle, 400);
+        });
+    })();
+}
+
+function boundsOfCircle(c) {
+    var minLng = 180, minLat = 90, maxLng = -180, maxLat = -90;
+    c.polygons.forEach(function (poly) {
+        poly[0].forEach(function (pt) {
+            minLng = Math.min(minLng, pt[0]); maxLng = Math.max(maxLng, pt[0]);
+            minLat = Math.min(minLat, pt[1]); maxLat = Math.max(maxLat, pt[1]);
+        });
+    });
+    return new AMap.Bounds(new AMap.LngLat(minLng, minLat), new AMap.LngLat(maxLng, maxLat));
+}
+
+function rectSearchPaged(bounds, page, acc, done) {
+    var ps = new AMap.PlaceSearch({
+        type: '120300|120301|120302|120303',
+        pageSize: 25,
+        pageIndex: page,
+        extensions: 'base'
+    });
+    ps.searchInBounds('', bounds, function (status, result) {
+        if (status === 'complete' && result.poiList && result.poiList.pois && result.poiList.pois.length) {
+            acc = acc.concat(result.poiList.pois);
+            if (result.poiList.pois.length === 25 && page < 12) {
+                setTimeout(function () { rectSearchPaged(bounds, page + 1, acc, done); }, 300);
+                return;
+            }
+        }
+        done(acc);
+    });
+}
+
+function importCandidates() {
+    var text = document.getElementById('importText').value.trim();
+    if (!text) { toast('请先粘贴候选地点清单'); return; }
+    var lines = text.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!lines.length) return;
+    if (lines.length > 50) { toast('一次最多导入 50 条'); return; }
+    toast('导入定位中（0/' + lines.length + '）…', 60000);
+    var i = 0, okCount = 0, fail = [];
+    (function next() {
+        if (i >= lines.length) {
+            refreshMembership();
+            renderPoiList();
+            var msg = '导入完成：成功 ' + okCount + ' 条';
+            if (fail.length) msg += '，未定位 ' + fail.length + ' 条（' + fail.slice(0, 3).join('、') + (fail.length > 3 ? '…' : '') + '）';
+            toast(msg, 4000);
+            return;
+        }
+        var line = lines[i++];
+        var parts = line.split(/[,，]/);
+        var kw = parts[0];
+        var city = (parts[1] || '').trim() || cityName || '全国';
+        var ps = new AMap.PlaceSearch({ city: city, citylimit: !!city, pageSize: 1, extensions: 'base' });
+        ps.search(kw, function (status, result) {
+            if (status === 'complete' && result.poiList && result.poiList.pois.length) {
+                addCommunity(result.poiList.pois[0], 'import');
+                okCount++;
+            } else { fail.push(kw); }
+            toast('导入定位中（' + i + '/' + lines.length + '）…', 60000);
+            setTimeout(next, 350);
+        });
+    })();
+}
+
+function clearCommunities() {
+    Object.values(communities).forEach(function (item) { item.marker.setMap(null); });
+    communities = {};
+    renderPoiList();
+}
+
+/* ============ 真实通勤时间 ============ */
+function computeCommute(item, onDone) {
+    var active = ['A', 'B'].filter(function (s) { return companies[s]; });
+    if (!active.length) { toast('请先设置起点位置'); return; }
+    var from = [item.poi.location.lng, item.poi.location.lat];
+    var pending = active.length + 1 + (companies.A ? 2 : 0); // 每地点公交 + 最近地铁 + 地点A步行骑行
+
+    function finish() {
+        if (--pending > 0) return;
+        updateItemView(item);
+        if (onDone) onDone();
+        else openInfo(item);
+    }
+
+    active.forEach(function (slot) {
+        var to = [companies[slot].lnglat.lng, companies[slot].lnglat.lat];
+        // 公交路径规划必须指定城市，否则接口直接报错
+        var ts = new AMap.Transfer({ city: cityName || '全国', policy: AMap.TransferPolicy.LEAST_TIME });
+        ts.search(from, to, function (status, res) {
+            if (status === 'complete' && res.plans && res.plans.length) {
+                var plan = res.plans[0];
+                var segs = (plan.segments || []).filter(function (s) { return s.transit; });
+                item.data[slot] = {
+                    mins: Math.round(plan.time / 60),
+                    transfers: segs.length > 0 ? segs.length - 1 : 0,
+                    walkKm: ((plan.walking_distance || 0) / 1000).toFixed(1)
+                };
+            } else {
+                item.data[slot] = { mins: null };
+            }
+            finish();
+        });
+    });
+
+    // 最近地铁站（步行到站距离是租房关键指标）
+    subwaySearch.searchNearBy('', item.poi.location, 3000, function (status, res) {
+        if (status === 'complete' && res.poiList && res.poiList.pois.length) {
+            var st = res.poiList.pois[0];
+            item.data.subway = {
+                name: st.name,
+                dist: Math.round(AMap.GeometryUtil.distance(st.location, item.poi.location))
+            };
+        } else { item.data.subway = null; }
+        finish();
+    });
+
+    if (companies.A) {
+        var toA = [companies.A.lnglat.lng, companies.A.lnglat.lat];
+        ridingSearch.search(from, toA, function (status, res) {
+            item.data.ride = (status === 'complete' && res.routes && res.routes.length)
+                ? Math.round(res.routes[0].time / 60) : null;
+            finish();
+        });
+        walkingSearch.search(from, toA, function (status, res) {
+            item.data.walk = (status === 'complete' && res.routes && res.routes.length)
+                ? Math.round(res.routes[0].time / 60) : null;
+            finish();
+        });
+    }
+}
+
+function maxMins(item) {
+    var vals = ['A', 'B'].filter(function (s) { return companies[s] && item.data[s]; })
+        .map(function (s) { return item.data[s].mins; })
+        .filter(function (v) { return v != null; });
+    return vals.length ? Math.max.apply(null, vals) : null;
+}
+
+function badgeClass(mins) {
+    if (mins == null) return '';
+    if (mins <= 30) return 'g';
+    if (mins <= 45) return 'y';
+    if (mins <= 60) return 'o';
+    return 'r';
+}
+
+function commuteHTML(item) {
+    var parts = [];
+    ['A', 'B'].forEach(function (s) {
+        if (!companies[s]) return;
+        var d = item.data[s];
+        if (!d) { parts.push('<span class="badge">' + s + ' 未计算</span>'); return; }
+        if (d.mins == null) { parts.push('<span class="badge">' + s + ' 无公交方案</span>'); return; }
+        parts.push('<span class="badge ' + badgeClass(d.mins) + '">' + s + ' 公交 ' + d.mins + '′ 换乘' + d.transfers + '</span>');
+    });
+    if (item.data.ride != null) parts.push('<span class="badge">骑行A ' + item.data.ride + '′</span>');
+    if (item.data.walk != null) parts.push('<span class="badge">步行A ' + item.data.walk + '′</span>');
+    return parts.join('');
+}
+
+function updateItemView(item) {
+    // 标记点着色
+    var m = maxMins(item);
+    var color = m == null ? '#9ca3af' : (m <= 30 ? '#059669' : m <= 45 ? '#d97706' : m <= 60 ? '#ea580c' : '#dc2626');
+    item.marker.setContent('<div class="mdot" style="background:' + color + '"></div>');
+    if (item.dom) renderPoiRow(item);
+}
+
+function openInfo(item) {
+    if (!infoWindow) infoWindow = new AMap.InfoWindow({ offset: new AMap.Pixel(0, -14) });
+    var sub = item.data.subway ? ('🚇 最近地铁：' + item.data.subway.name + ' ' + item.data.subway.dist + 'm<br>') : '';
+    infoWindow.setContent(
+        '<div style="font-size:13px;padding:4px 6px;max-width:260px"><b>' + item.poi.name + '</b><br>' +
+        sub + commuteHTML(item) + '</div>'
+    );
+    infoWindow.open(map, item.poi.location);
+}
+
+function batchCommute() {
+    var list = Object.values(communities);
+    if (!list.length) { toast('请先检索或导入候选地点'); return; }
+    if (list.length > 80) { toast('候选过多，请先筛选（一次最多批量 80 个）'); list = list.slice(0, 80); }
+    var i = 0;
+    toast('批量计算中（0/' + list.length + '）…', 600000);
+    (function next() {
+        if (i >= list.length) { renderPoiList(); toast('批量计算完成，列表已按通勤时间排序'); return; }
+        var item = list[i++];
+        computeCommute(item, function () {
+            toast('批量计算中（' + i + '/' + list.length + '）…', 600000);
+            setTimeout(next, 400);
+        });
+    })();
+}
+
+/* ============ 列表渲染：排序 + 筛选 ============ */
+function renderPoiRow(item) {
+    var p = item.poi;
+    var distA = companies.A ? (AMap.GeometryUtil.distance(p.location, companies.A.lnglat) / 1000).toFixed(1) : null;
+    var tags = Array.from(item.circleIds).map(function (cid) {
+        var c = circles.find(function (x) { return x.id === cid; });
+        return c ? '<span style="background:' + c.color + '">' + c.label + '</span>' : '';
+    }).join('');
+    if (!tags && circles.length) tags = '<span style="background:#9ca3af">圈外</span>';
+    var sub = item.data.subway ? ' · 🚇' + item.data.subway.name + ' ' + item.data.subway.dist + 'm' : '';
+    item.dom.innerHTML =
+        '<div><b>' + p.name + '</b>' + (item.source === 'import' ? '<span class="src-tag">导入</span>' : '') + '</div>' +
+        '<div class="meta">' + (p.address || '') + (distA ? ' · 直线距A ' + distA + 'km' : '') + sub + '</div>' +
+        '<div class="tags">' + tags + '</div>' +
+        '<div class="commute">' + (commuteHTML(item) || '<span class="hint">点击计算通勤时间 →</span>') + '</div>';
+}
+
+function renderPoiList() {
+    var box = document.getElementById('poiList');
+    box.innerHTML = '';
+    var list = Object.values(communities);
+    document.getElementById('poiCount').textContent = list.length ? ('共 ' + list.length + ' 个') : '';
+
+    var filterVal = parseInt(document.getElementById('filterMax').value, 10);
+    if (!isNaN(filterVal)) {
+        list = list.filter(function (item) {
+            var m = maxMins(item);
+            return m != null && m <= filterVal;
+        });
+    }
+
+    var sortBy = document.getElementById('sortBy').value;
+    list.sort(function (a, b) {
+        function key(item) {
+            if (sortBy === 'dist') {
+                return companies.A ? AMap.GeometryUtil.distance(item.poi.location, companies.A.lnglat) : 0;
+            }
+            if (sortBy === 'A' || sortBy === 'B') {
+                var d = item.data[sortBy];
+                return (d && d.mins != null) ? d.mins : 99999;
+            }
+            var m = maxMins(item);
+            return m != null ? m : 99999;
+        }
+        return key(a) - key(b);
+    });
+
+    list.forEach(function (item) {
+        var div = document.createElement('div');
+        div.className = 'poi-item';
+        item.dom = div;
+        renderPoiRow(item);
+        div.onclick = function () {
+            map.panTo(item.poi.location);
+            computeCommute(item);
+        };
+        box.appendChild(div);
+    });
+}
+
+/* ============ 导出 ============ */
+function exportGeoJSON() {
+    if (!circles.length) { toast('没有可导出的等时圈'); return; }
+    var toWGS = document.getElementById('coord').value === 'WGS84';
+    var features = circles.map(function (c) {
+        var comp = companies[c.companyId];
+        var polys = c.polygons.map(function (rings) {
+            return rings.map(function (ring) {
+                return ring.map(function (pt) { return toWGS ? gcj02towgs84(pt[0], pt[1]) : [pt[0], pt[1]]; });
+            });
+        });
+        return {
+            type: 'Feature',
+            properties: {
+                company: c.companyId,
+                mode: c.mode, minutes: c.minutes, approx: c.approx,
+                center: comp ? [comp.lnglat.lng, comp.lnglat.lat] : null,
+                center_name: comp ? comp.name : null
+            },
+            geometry: { type: 'MultiPolygon', coordinates: polys }
+        };
+    });
+    downloadFile(JSON.stringify({ type: 'FeatureCollection', features: features }), '通勤等时圈.geojson', 'application/geo+json');
+}
+
+function exportCSV() {
+    var list = Object.values(communities);
+    if (!list.length) { toast('没有可导出的结果'); return; }
+    var rows = [['名称', '地址', '来源', '圈内标签', '直线距A(km)', 'A公交分钟', 'A换乘', 'B公交分钟', 'B换乘', '骑行A分钟', '步行A分钟', '最近地铁站', '距地铁(m)', '经度', '纬度']];
+    list.forEach(function (item) {
+        var p = item.poi;
+        var tags = Array.from(item.circleIds).map(function (cid) {
+            var c = circles.find(function (x) { return x.id === cid; });
+            return c ? c.label : '';
+        }).filter(Boolean).join('|') || '圈外';
+        var A = item.data.A || {}, B = item.data.B || {}, sub = item.data.subway || {};
+        rows.push([
+            p.name, p.address || '', item.source === 'import' ? '导入' : 'POI', tags,
+            companies.A ? (AMap.GeometryUtil.distance(p.location, companies.A.lnglat) / 1000).toFixed(2) : '',
+            A.mins != null ? A.mins : '', A.transfers != null ? A.transfers : '',
+            B.mins != null ? B.mins : '', B.transfers != null ? B.transfers : '',
+            item.data.ride != null ? item.data.ride : '', item.data.walk != null ? item.data.walk : '',
+            sub.name || '', sub.dist != null ? sub.dist : '',
+            p.location.lng, p.location.lat
+        ]);
+    });
+    var csv = '\ufeff' + rows.map(function (r) {
+        return r.map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',');
+    }).join('\r\n');
+    downloadFile(csv, '候选地点通勤结果.csv', 'text/csv');
+}
+
+function downloadFile(content, filename, mime) {
+    var blob = new Blob([content], { type: (mime || 'text/plain') + ';charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+/* ============ 方案保存 / 恢复 ============ */
+function saveState() {
+    try {
+        var state = {
+            companies: {},
+            circles: circles.map(function (c) {
+                return { companyId: c.companyId, mode: c.mode, minutes: c.minutes };
+            })
+        };
+        ['A', 'B'].forEach(function (s) {
+            if (companies[s]) {
+                state.companies[s] = { name: companies[s].name, lng: companies[s].lnglat.lng, lat: companies[s].lnglat.lat };
+            }
+        });
+        localStorage.setItem('house_tool_state', JSON.stringify(state));
+    } catch (e) { /* ignore */ }
+}
+
+function restoreState() {
+    var raw = localStorage.getItem('house_tool_state');
+    if (!raw) return;
+    try {
+        var state = JSON.parse(raw);
+        ['A', 'B'].forEach(function (s) {
+            var c = state.companies && state.companies[s];
+            if (c) setCompany(s, new AMap.LngLat(c.lng, c.lat), c.name, true);
+        });
+        (state.circles || []).forEach(function (c, i) {
+            setTimeout(function () { addCircleFrom(c.companyId, c.mode, c.minutes, true); }, 400 * (i + 1));
+        });
+        if (state.circles && state.circles.length) {
+            setTimeout(function () { toast('已恢复上次的起点位置与等时圈'); }, 400 * state.circles.length + 800);
+        }
+    } catch (e) { /* ignore */ }
+}
+
+/* GCJ02 → WGS84 近似转换（中国大陆范围内有效） */
+function gcj02towgs84(lng, lat) {
+    var pi = 3.1415926535897932384626, ee = 0.00669342162296594323, a = 6378245.0;
+    var dlat = transformlat(lng - 105.0, lat - 35.0);
+    var dlng = transformlng(lng - 105.0, lat - 35.0);
+    var radlat = lat / 180.0 * pi;
+    var magic = 1 - ee * Math.sin(radlat) * Math.sin(radlat);
+    var sqrtmagic = Math.sqrt(magic);
+    dlat = (dlat * 180.0) / ((a * (1 - ee)) / (magic * sqrtmagic) * pi);
+    dlng = (dlng * 180.0) / (a / sqrtmagic * Math.cos(radlat) * pi);
+    return [lng - dlng, lat - dlat];
+}
+function transformlat(lng, lat) {
+    var pi = 3.1415926535897932384626;
+    var ret = -100.0 + 2.0 * lng + 3.0 * lat + 0.2 * lat * lat + 0.1 * lng * lat + 0.2 * Math.sqrt(Math.abs(lng));
+    ret += (20.0 * Math.sin(6.0 * lng * pi) + 20.0 * Math.sin(2.0 * lng * pi)) * 2.0 / 3.0;
+    ret += (20.0 * Math.sin(lat * pi) + 40.0 * Math.sin(lat / 3.0 * pi)) * 2.0 / 3.0;
+    ret += (160.0 * Math.sin(lat / 12.0 * pi) + 320 * Math.sin(lat / 30.0 * pi)) * 2.0 / 3.0;
+    return ret;
+}
+function transformlng(lng, lat) {
+    var pi = 3.1415926535897932384626;
+    var ret = 300.0 + lng + 2.0 * lat + 0.1 * lng * lng + 0.1 * lng * lat + 0.1 * Math.sqrt(Math.abs(lng));
+    ret += (20.0 * Math.sin(6.0 * lng * pi) + 20.0 * Math.sin(2.0 * lng * pi)) * 2.0 / 3.0;
+    ret += (20.0 * Math.sin(lng * pi) + 40.0 * Math.sin(lng / 3.0 * pi)) * 2.0 / 3.0;
+    ret += (150.0 * Math.sin(lng / 12.0 * pi) + 300.0 * Math.sin(lng / 30.0 * pi)) * 2.0 / 3.0;
+    return ret;
+}
+</script>
+</body>
+</html>
