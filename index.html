@@ -459,7 +459,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
         companyId: companyId,
         label: '地点' + companyId + ' · ' + MODE_LABEL[mode] + ' ' + minutes + ' 分钟' + (isTransit ? '' : '(近似)'),
         mode: mode, minutes: minutes, color: color, approx: !isTransit,
-        polygons: [], overlays: []
+        polygons: [], overlays: [], visible: true
     };
     circles.push(circle);
     renderCircleList();
@@ -510,6 +510,7 @@ function addPolygonOverlay(circle, rings) {
         zIndex: 50
     });
     polygon.setMap(map);
+    if (circle.visible === false) polygon.hide();
     circle.overlays.push(polygon);
 }
 
@@ -545,8 +546,13 @@ function renderCircleList() {
             '<button class="ghost" data-act="toggle">显隐</button>' +
             '<button class="warn" data-act="del">删</button>';
         div.querySelector('[data-act=toggle]').onclick = function () {
-            c.overlays.forEach(function (o) { o.getMap() ? o.hide() : o.show(); });
+            // 注意：AMap.Polygon.hide() 后 getMap() 仍返回地图对象，
+            // 不能用 o.getMap() 判断显隐，必须用 circle.visible 自行记录状态
+            c.visible = (c.visible === false);
+            c.overlays.forEach(function (o) { c.visible ? o.show() : o.hide(); });
+            div.style.opacity = c.visible ? '1' : '0.5';
         };
+        if (c.visible === false) div.style.opacity = '0.5';
         div.querySelector('[data-act=del]').onclick = function () { removeCircle(c.id); saveState(); };
         box.appendChild(div);
     });
