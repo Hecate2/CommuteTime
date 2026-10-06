@@ -270,6 +270,13 @@ function toast(msg, ms) {
     t._timer = setTimeout(function () { t.style.display = 'none'; }, ms || 2500);
 }
 
+/* 转义后拼入 innerHTML，避免站名/线路名注入 HTML */
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+}
+
 /* 先读配置再加载地图 */
 fetch('config.yaml')
     .then(function (r) { return r.text(); })
@@ -476,14 +483,14 @@ function fitGroups() {
         minLng = Math.min(minLng, g.lng); maxLng = Math.max(maxLng, g.lng);
         minLat = Math.min(minLat, g.lat); maxLat = Math.max(maxLat, g.lat);
     });
-    map.setBounds(new AMap.Bounds([minLng, minLat], [maxLng, maxLat]), false, [60, 60, 420, 60]);
+    map.setBounds(new AMap.Bounds([minLng, minLat], [maxLng, maxLat]), false);
 }
 
 /* ============ 图例 ============ */
 function renderLegend(title, items) {
-    var html = '<div class="lg-title">' + title + '</div>';
+    var html = '<div class="lg-title">' + escapeHtml(title) + '</div>';
     items.forEach(function (it) {
-        html += '<div class="lg-item"><span class="lg-dot" style="background:' + it[0] + '"></span>' + it[1] + '</div>';
+        html += '<div class="lg-item"><span class="lg-dot" style="background:' + escapeHtml(it[0]) + '"></span>' + escapeHtml(it[1]) + '</div>';
     });
     document.getElementById('legend').innerHTML = html;
 }
@@ -530,9 +537,9 @@ function showStationInfo(g) {
         var m = cached && cached.t ? cached.t[g.id] : null;
         if (m != null) avg = '自' + originGroup.name + '出发 ' + m + ' 分钟';
     }
-    mins = '<div style="font-size:13px;padding:4px 6px;max-width:240px"><b>' + g.name + '</b>' + rank + '<br>' +
-        '🚇 ' + (g.lines || []).join(' / ') + '<br>' +
-        '平均通勤：' + avg + '<br>' +
+    mins = '<div style="font-size:13px;padding:4px 6px;max-width:240px"><b>' + escapeHtml(g.name) + '</b>' + rank + '<br>' +
+        '🚇 ' + escapeHtml((g.lines || []).join(' / ')) + '<br>' +
+        '平均通勤：' + escapeHtml(avg) + '<br>' +
         '<span style="color:#6b7280;font-size:12px">点击站点查看单站出发视图</span></div>';
     infoWindow.setContent(mins);
     infoWindow.open(map, [g.lng, g.lat]);
@@ -598,9 +605,9 @@ function renderRankTable() {
             badgeCls = g.avg_minutes <= 40 ? 'g' : g.avg_minutes <= 50 ? 'y' : g.avg_minutes <= 60 ? 'o' : 'r';
         }
         tr.innerHTML = '<td>' + (g.rank != null ? g.rank : (i + 1)) + '</td>' +
-            '<td><b>' + g.name + '</b></td>' +
+            '<td><b>' + escapeHtml(g.name) + '</b></td>' +
             '<td><span class="badge ' + badgeCls + '">' + avgTxt + '</span></td>' +
-            '<td class="lines">' + (g.lines || []).join(' / ') + '</td>';
+            '<td class="lines">' + escapeHtml((g.lines || []).join(' / ')) + '</td>';
         tr.onclick = function () { highlightStation(g); };
         tr.ondblclick = function () { enterOriginView(g); };
         body.appendChild(tr);
@@ -615,7 +622,7 @@ function enterOriginView(g) {
     infoWindow.close();
     document.getElementById('cityView').style.display = 'none';
     document.getElementById('originView').style.display = '';
-    document.getElementById('originInfo').innerHTML = '出发站：<b>' + g.name + '</b>（' + (g.lines || []).join(' / ') + '）';
+    document.getElementById('originInfo').innerHTML = '出发站：<b>' + escapeHtml(g.name) + '</b>（' + escapeHtml((g.lines || []).join(' / ')) + '）';
     document.getElementById('originStats').innerHTML = '';
     document.getElementById('destList').innerHTML = '<div class="hint">加载中…</div>';
     toast('正在加载「' + g.name + '」的通勤矩阵…', 60000);
@@ -703,7 +710,7 @@ function drawOriginView(g, rowsData) {
 
     renderLegend('自 ' + g.name + ' 出发（分钟）', ORIGIN_LEGEND);
     var fitTargets = isoOverlays.concat([originMarker]);
-    if (fitTargets.length) map.setFitView(fitTargets, false, [60, 60, 420, 60]);
+    if (fitTargets.length) map.setFitView(fitTargets, false);
 }
 
 function clearIsoOverlays() {
@@ -745,7 +752,7 @@ function renderOriginPanel(g, rowsData) {
         var div = document.createElement('div');
         div.className = 'dest-item';
         var badgeCls = it.mins <= 15 ? 'dg' : it.mins <= 30 ? 'g' : it.mins <= 45 ? 'y' : it.mins <= 60 ? 'o' : 'r';
-        div.innerHTML = '<span class="label"><b>' + gg.name + '</b> <span style="font-size:11px;color:#6b7280">' + (gg.lines || []).join('/') + '</span></span>' +
+        div.innerHTML = '<span class="label"><b>' + escapeHtml(gg.name) + '</b> <span style="font-size:11px;color:#6b7280">' + escapeHtml((gg.lines || []).join('/')) + '</span></span>' +
             '<span class="mins"><span class="badge ' + badgeCls + '">' + it.mins + ' 分钟</span></span>';
         div.onclick = function () {
             map.panTo([gg.lng, gg.lat]);

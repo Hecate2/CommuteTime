@@ -106,7 +106,7 @@ def load_nodes(matches_path: Path):
             "lng": lng,
             "lat": lat,
         }
-    return nodes, sorted(unresolved)
+    return nodes, sorted(set(unresolved))
 
 
 def load_rankings(ranking_path: Path) -> dict[str, tuple[int, float]]:
