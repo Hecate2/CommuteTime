@@ -1,0 +1,12 @@
+{
+  "city": "shanghai",
+  "city_name": "上海",
+  "generated_at": "2026-10-06",
+  "departure": "工作日 07:15 出发，含进出站步行与候车",
+  "group_count": 12,
+  "node_count": 22,
+  "pair_count": 132,
+  "unresolved_nodes": [
+    "14:1401"
+  ]
+}

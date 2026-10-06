@@ -1,0 +1,24 @@
+line_order,line_label,station_id,station_slug,station_name,status,score,query_text,poi_name,poi_type,poi_address,poi_id,location,note,source_key
+1,1号线,1054,shanghai-huochezhan,上海火车站,resolved,98,上海地铁1号线上海火车站站,上海火车站站,地铁站,上海市,B0FF1054,"121.4558,31.2493",,amap_poi
+1,1号线,1055,hanzhonglu,汉中路,resolved,98,上海地铁1号线汉中路站,汉中路站,地铁站,上海市,B0FF1055,"121.459,31.242",,amap_poi
+1,1号线,1056,renmin-guangchang,人民广场,resolved,98,上海地铁1号线人民广场站,人民广场站,地铁站,上海市,B0FF1056,"121.4754,31.233",,amap_poi
+1,1号线,1057,shanxi-nanlu,陕西南路,resolved,98,上海地铁1号线陕西南路站,陕西南路站,地铁站,上海市,B0FF1057,"121.4582,31.2157",,amap_poi
+1,1号线,1058,xujiahui,徐家汇,resolved,98,上海地铁1号线徐家汇站,徐家汇站,地铁站,上海市,B0FF1058,"121.437,31.1935",,amap_poi
+2,2号线,2061,hongqiao-huochezhan,虹桥火车站,resolved,98,上海地铁2号线虹桥火车站站,虹桥火车站站,地铁站,上海市,B0FF2061,"121.3202,31.1943",,amap_poi
+2,2号线,2062,zhongshan-gongyuan,中山公园,resolved,98,上海地铁2号线中山公园站,中山公园站,地铁站,上海市,B0FF2062,"121.4241,31.2188",,amap_poi
+2,2号线,2063,jingansi,静安寺,resolved,98,上海地铁2号线静安寺站,静安寺站,地铁站,上海市,B0FF2063,"121.4453,31.2235",,amap_poi
+2,2号线,2064,renmin-guangchang,人民广场,resolved,98,上海地铁2号线人民广场站,人民广场站,地铁站,上海市,B0FF2064,"121.475,31.2333",,amap_poi
+2,2号线,2065,nanjing-donglu,南京东路,resolved,98,上海地铁2号线南京东路站,南京东路站,地铁站,上海市,B0FF2065,"121.4846,31.2362",,amap_poi
+2,2号线,2066,lujiazui,陆家嘴,resolved,98,上海地铁2号线陆家嘴站,陆家嘴站,地铁站,上海市,B0FF2066,"121.5015,31.238",,amap_poi
+2,2号线,2067,shiji-dadao,世纪大道,resolved,98,上海地铁2号线世纪大道站,世纪大道站,地铁站,上海市,B0FF2067,"121.5274,31.2313",,amap_poi
+8,8号线,8001,renmin-guangchang,人民广场,resolved,98,上海地铁8号线人民广场站,人民广场站,地铁站,上海市,B0FF8001,"121.4745,31.2337",,amap_poi
+10,10号线,10001,hongqiao-huochezhan,虹桥火车站,resolved,98,上海地铁10号线虹桥火车站站,虹桥火车站站,地铁站,上海市,B0FF10001,"121.3197,31.1938",,amap_poi
+10,10号线,10002,shanxi-nanlu,陕西南路,resolved,98,上海地铁10号线陕西南路站,陕西南路站,地铁站,上海市,B0FF10002,"121.4587,31.2152",,amap_poi
+10,10号线,10003,nanjing-donglu,南京东路,resolved,98,上海地铁10号线南京东路站,南京东路站,地铁站,上海市,B0FF10003,"121.4841,31.2358",,amap_poi
+10,10号线,10004,wujiaochang,五角场,resolved,98,上海地铁10号线五角场站,五角场站,地铁站,上海市,B0FF10004,"121.5145,31.3005",,amap_poi
+4,4号线,4001,zhongshan-gongyuan,中山公园,resolved,98,上海地铁4号线中山公园站,中山公园站,地铁站,上海市,B0FF4001,"121.4246,31.2183",,amap_poi
+4,4号线,4002,shanghai-huochezhan,上海火车站,resolved,98,上海地铁4号线上海火车站站,上海火车站站,地铁站,上海市,B0FF4002,"121.4553,31.2497",,amap_poi
+4,4号线,4003,shiji-dadao,世纪大道,resolved,98,上海地铁4号线世纪大道站,世纪大道站,地铁站,上海市,B0FF4003,"121.5267,31.2306",,amap_poi
+9,9号线,9001,xujiahui,徐家汇,resolved,98,上海地铁9号线徐家汇站,徐家汇站,地铁站,上海市,B0FF9001,"121.4373,31.1937",,amap_poi
+9,9号线,9002,shiji-dadao,世纪大道,resolved,98,上海地铁9号线世纪大道站,世纪大道站,地铁站,上海市,B0FF9002,"121.5272,31.2308",,amap_poi
+14,14号线,1401,yuyuan,豫园,unresolved,0,上海地铁14号线豫园站,,,,,,no match,amap_poi

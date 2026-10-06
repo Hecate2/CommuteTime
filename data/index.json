@@ -1,0 +1,9 @@
+{
+  "cities": [
+    {
+      "city": "shanghai",
+      "city_name": "上海",
+      "group_count": 12
+    }
+  ]
+}
