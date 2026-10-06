@@ -124,6 +124,9 @@
             <input type="text" id="companyInput" placeholder="输入地点名 / 地址搜索新建，或直接点击地图新建">
             <div class="hint">每次在地图上点击或搜索选中都会自动创建一个新的出发地点。</div>
             <div id="chipBox"></div>
+            <div class="row" style="margin-top:6px">
+                <button id="shareBtn" class="ghost" style="height:24px;font-size:12px">🔗 复制分享链接（对方打开自动重现方案）</button>
+            </div>
         </section>
 
         <section>
@@ -135,12 +138,23 @@
                     <option value="SUBWAY,BUS">地铁+公交（真实路网）</option>
                     <option value="SUBWAY">地铁（真实路网）</option>
                     <option value="BUS">公交（真实路网）</option>
-                    <option value="walk">步行（直线近似）</option>
-                    <option value="ride">骑行（直线近似）</option>
+                    <option value="walk">步行</option>
+                    <option value="ride">骑行</option>
                 </select>
                 <input type="number" id="minutes" min="1" max="120" value="30" style="flex:0 0 64px">
             </div>
             <button id="addCircleBtn">＋ 添加等时圈</button>
+            <div class="row" style="margin-top:6px;flex-wrap:wrap">
+                <label style="flex:0 0 auto;font-size:12px;color:#374151;display:flex;align-items:center;gap:4px;white-space:nowrap">
+                    <input type="checkbox" id="preciseChk" style="width:auto;height:auto;margin:0"> 精确路网圈（步行/骑行）
+                </label>
+                <label class="hint" style="flex:0 0 auto;margin:0">步行</label>
+                <input type="number" id="walkSpeed" min="1" max="10" step="0.1" value="4.5" style="flex:0 0 56px" title="步行平均速度 km/h">
+                <label class="hint" style="flex:0 0 auto;margin:0">骑行</label>
+                <input type="number" id="rideSpeed" min="3" max="30" step="0.5" value="9" style="flex:0 0 56px" title="骑行平均速度 km/h">
+                <label class="hint" style="flex:0 0 auto;margin:0">km/h</label>
+            </div>
+            <div class="hint">「精确路网圈」沿 24 个方向用真实步行/骑行路径逐点二分边界（约 200 次调用、30~60 秒，更准）；不勾选则按上方速度画直线近似圈，秒出。</div>
             <div id="circleList"></div>
             <div class="intersect-bar">
                 <label><input type="checkbox" id="onlyIntersect"> 只显示所选圈的交集</label>
@@ -185,7 +199,7 @@
         </section>
 
         <footer>
-            说明：步行/骑行圈为直线距离近似（步行≈2.8km/h、骑行≈9km/h）；地铁/公交圈来自高德到达圈（不含等车与换乘耗时），以「真实通勤时间」为最终依据。候选地点来自高德 POI 或手动导入。配色：≤30分钟 绿，≤45 黄，≤60 橙，&gt;60 红。
+            说明：步行/骑行默认按可调速度画直线近似圈（默认步行 4.5km/h、骑行 9 km/h），勾选「精确路网圈」后改用真实路径逐方向二分（慢但准）；地铁/公交圈来自高德到达圈（不含等车与换乘耗时），以「真实通勤时间」为最终依据。候选地点来自高德 POI 或手动导入。配色：≤30分钟 绿，≤45 黄，≤60 橙，&gt;60 红。
         </footer>
     </aside>
     <div id="container"></div>
@@ -305,6 +319,235 @@ function toast(msg, ms) {
     t._timer = setTimeout(function () { t.style.display = 'none'; }, ms || 2500);
 }
 
+/* ============ 高德 API 调用治理：令牌桶限流 + 错误识别 + 指数退避重试 ============ */
+var API_BUCKET = { capacity: 6, tokens: 6, refillPerMs: 1 / 150, last: Date.now() };
+function apiThrottleWait() {
+    var now = Date.now();
+    API_BUCKET.tokens = Math.min(API_BUCKET.capacity, API_BUCKET.tokens + (now - API_BUCKET.last) * API_BUCKET.refillPerMs);
+    API_BUCKET.last = now;
+    if (API_BUCKET.tokens >= 1) { API_BUCKET.tokens -= 1; return 0; }
+    return Math.ceil((1 - API_BUCKET.tokens) / API_BUCKET.refillPerMs);
+}
+var API_RETRY_MAX = 4;
+var API_RETRYABLE = /CUQPS|QPS|TOO_FREQUENT|OVER_FLOW/i;
+var API_QUOTA_OUT = /DAILY_QUERY_OVER_LIMIT|QUOTA_PLAN_RUN_OUT/i;
+var API_BAD_KEY = /INVALID_USER_KEY|INVALID_USER_SCODE|USER_KEY_PLAT_NOMATCH|SERVICE_NOT_AVAILABLE/i;
+var apiWarnToastAt = 0;
+
+// 统一封装一次高德异步调用：
+//   opts.run(cb)          发起调用，结果通过 cb(status, result) 回传
+//   opts.isSuccess(s, r)  判定业务成功（如 complete 且确有数据）
+//   opts.onDone(state, r) state ∈ success | empty（调用完成但无数据） | error（失败或重试耗尽）
+// QPS/并发限流自动指数退避重试；配额耗尽、密钥无效给出明确提示；其余失败直接返回由调用方处理。
+function amapRequest(label, opts) {
+    var attempt = 0;
+    function issue() {
+        setTimeout(function () {
+            try {
+                opts.run(done);
+            } catch (e) {
+                if (attempt < 2) { attempt++; setTimeout(issue, 600); return; }
+                done('error', { info: String(e && e.message || e) });
+            }
+        }, apiThrottleWait());
+    }
+    function warn(msg) {
+        if (Date.now() - apiWarnToastAt < 8000) return;
+        apiWarnToastAt = Date.now();
+        toast(label + '：' + msg, 6000);
+    }
+    function done(status, result) {
+        if (opts.isSuccess(status, result)) { opts.onDone('success', result); return; }
+        var info = String((result && (result.info || result.errorInfo)) || '');
+        if (API_RETRYABLE.test(info) && attempt < API_RETRY_MAX) {
+            attempt++;
+            setTimeout(issue, Math.min(400 * Math.pow(2, attempt), 8000));
+            return;
+        }
+        if (API_QUOTA_OUT.test(info)) warn('今日配额已用尽，请稍后重试');
+        else if (API_BAD_KEY.test(info)) warn('密钥无效或服务未开通（需「Web端(JS API)」类型）');
+        opts.onDone((status === 'complete' || status === 'no_data') ? 'empty' : 'error', result);
+    }
+    issue();
+}
+
+/* ============ 通勤结果缓存（同起点坐标 + 同候选点跨会话复用，省配额） ============ */
+var commuteCache = {};
+try {
+    commuteCache = JSON.parse(localStorage.getItem('house_tool_commute_cache') || '{}') || {};
+} catch (e) { commuteCache = {}; }
+
+function persistCommuteCache() {
+    try {
+        var keys = Object.keys(commuteCache);
+        if (keys.length > 900) {
+            var trimmed = {};
+            keys.slice(-500).forEach(function (k) { trimmed[k] = commuteCache[k]; });
+            commuteCache = trimmed;
+        }
+        localStorage.setItem('house_tool_commute_cache', JSON.stringify(commuteCache));
+    } catch (e) { /* 存储满等异常情况静默忽略 */ }
+}
+
+function coordKey(l) { return l.lng.toFixed(5) + ',' + l.lat.toFixed(5); }
+function currentWalkSpeed() {
+    var v = parseFloat(document.getElementById('walkSpeed').value);
+    return (isFinite(v) && v > 0 && v <= 20) ? v : 4.5;
+}
+function currentRideSpeed() {
+    var v = parseFloat(document.getElementById('rideSpeed').value);
+    return (isFinite(v) && v > 0 && v <= 40) ? v : 9;
+}
+
+/* 闭合折线三点滑动平均，弱化二分边界的锯齿 */
+function smoothClosed(pts) {
+    if (!pts || pts.length < 5) return pts;
+    var out = [];
+    for (var i = 0; i < pts.length; i++) {
+        var a = pts[(i - 1 + pts.length) % pts.length], b = pts[i], c = pts[(i + 1) % pts.length];
+        out.push([(a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3]);
+    }
+    return out;
+}
+
+/* 精确步行/骑行等时圈：RAYS 个方向各用真实路径规划二分「minutes 分钟内可达」的边界 */
+function buildPreciseRing(center, mode, minutes, onProgress, onDone) {
+    var RAYS = 24, STEPS = 8, CONC = 4;
+    var speedKmH = (mode === 'walk') ? currentWalkSpeed() : currentRideSpeed();
+    var targetSec = minutes * 60;
+    var maxR = speedKmH / 3.6 * targetSec * 1.8;   // 扫描上限按 1.8 倍绕行系数估计
+    var kx = 111320 * Math.cos(center[1] * Math.PI / 180), ky = 110540;
+    var results = new Array(RAYS);
+    var started = 0, finished = 0;
+
+    function ptAt(i, r) {
+        var a = 2 * Math.PI * i / RAYS;
+        return [center[0] + r * Math.cos(a) / kx, center[1] + r * Math.sin(a) / ky];
+    }
+    function routeSec(target, cb) {
+        var searcher = (mode === 'walk') ? new AMap.Walking() : new AMap.Riding();
+        amapRequest(MODE_LABEL[mode] + '圈', {
+            run: function (cb2) { searcher.search(center, target, cb2); },
+            isSuccess: function (s, r) { return s === 'complete' && !!(r && r.routes && r.routes.length); },
+            onDone: function (status, result) {
+                cb(status === 'success' ? result.routes[0].time : null);
+            }
+        });
+    }
+    function ray(i) {
+        var lo = 0, hi = maxR, step = 0;
+        routeSec(ptAt(i, hi), function (t) {
+            // 上限可达：边界超出扫描范围，钳制到 maxR
+            if (t != null && t <= targetSec) { results[i] = { r: maxR }; finishOne(); return; }
+            (function bisect() {
+                if (step >= STEPS) { results[i] = { r: (lo + hi) / 2 }; finishOne(); return; }
+                step++;
+                var mid = (lo + hi) / 2;
+                routeSec(ptAt(i, mid), function (t2) {
+                    if (t2 != null && t2 <= targetSec) lo = mid; else hi = mid;
+                    bisect();
+                });
+            })();
+        });
+    }
+    function finishOne() {
+        finished++;
+        if (onProgress) onProgress(finished, RAYS);
+        pump();
+    }
+    function pump() {
+        while (started < RAYS && started - finished < CONC) ray(started++);
+        if (finished === RAYS) {
+            var pts = [];
+            for (var i = 0; i < RAYS; i++) {
+                if (results[i]) pts.push(ptAt(i, results[i].r));
+            }
+            onDone(pts.length >= 6 ? smoothClosed(pts) : pts);
+        }
+    }
+    pump();
+}
+
+/* ============ 深链接与分享 ============ */
+function copyText(text, cb) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { cb(true); }, function () { cb(fallbackCopy(text)); });
+    } else {
+        cb(fallbackCopy(text));
+    }
+}
+function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+}
+
+// 把当前起点/出行方式/时长编码进 URL，对方打开即自动重现方案
+function shareLink() {
+    var list = companyList();
+    if (!list.length) { toast('请先添加起点位置'); return; }
+    var qs = new URLSearchParams();
+    list.forEach(function (c) {
+        qs.append('point', c.lnglat.lng.toFixed(6) + ',' + c.lnglat.lat.toFixed(6));
+        qs.append('name', c.name);
+    });
+    qs.set('run', '1');
+    qs.set('mode', document.getElementById('mode').value);
+    qs.set('min', document.getElementById('minutes').value);
+    if (intersectOnly && list.length >= 2) qs.set('intersect', '1');
+    var url = location.href.split('?')[0] + '?' + qs.toString();
+    copyText(url, function (ok) {
+        toast(ok ? '分享链接已复制，对方打开即自动重现方案' : '复制失败，请手动复制：' + url, 4000);
+    });
+}
+
+// 解析 ?point=lng,lat(&name=..)(&mode=..)(&min=..)(&run=1)(&intersect=1)，返回是否命中深链接
+function applyDeepLink() {
+    var qs;
+    try { qs = new URLSearchParams(location.search); } catch (e) { return false; }
+    var points = qs.getAll('point');
+    if (!points.length) return false;
+    var names = qs.getAll('name');
+    var added = [];
+    points.forEach(function (pstr, i) {
+        var parts = String(pstr).split(',');
+        var lng = parseFloat(parts[0]), lat = parseFloat(parts[1]);
+        if (!isFinite(lng) || !isFinite(lat) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+        added.push(addCompany(new AMap.LngLat(lng, lat), names[i] || nextDefaultOriginName(), true));
+    });
+    if (!added.length) return false;
+    if (qs.get('run') === '1') {
+        var mode = qs.get('mode') || 'SUBWAY,BUS';
+        if (!MODE_LABEL[mode]) mode = 'SUBWAY,BUS';
+        var minutes = parseInt(qs.get('min') || '30', 10);
+        if (!isFinite(minutes) || minutes < 1) minutes = 30;
+        document.getElementById('mode').value = mode;
+        document.getElementById('minutes').value = minutes;
+        added.forEach(function (comp, i) {
+            setTimeout(function () { addCircleFrom(comp.id, mode, minutes, true); }, 700 * (i + 1));
+        });
+        if (qs.get('intersect') === '1' && added.length >= 2) {
+            var tries = 0;
+            var iv = setInterval(function () {
+                var ready = circles.filter(function (c) { return c.polygons && c.polygons.length; }).length;
+                if (ready >= added.length || ++tries > 60) {
+                    clearInterval(iv);
+                    document.getElementById('onlyIntersect').checked = true;
+                    intersectOnly = true;
+                    refreshIntersect();
+                }
+            }, 500);
+        }
+    }
+    return true;
+}
+
 /* ============ 动态加载高德 JSAPI 2.0 ============ */
 function loadAMap() {
     window._AMapSecurityConfig = { securityJsCode: AMAP_CODE };
@@ -321,7 +564,7 @@ function loadAMap() {
 }
 
 /* ============ 全局状态 ============ */
-var map, arrivalRange, walkingSearch, ridingSearch, geocoder, subwaySearch;
+var map;
 var companies = {};   // id -> {id, name, lnglat, marker, city}
 var companySeq = 0;
 var cityName = '';
@@ -373,23 +616,24 @@ function initApp() {
         if (e.poi && e.poi.location) {
             addCompany(e.poi.location, e.poi.name);
         } else if (e.poi && e.poi.name) {
-            var ps = new AMap.PlaceSearch({ city: e.poi.district || '', citylimit: true });
-            ps.search(e.poi.name, function (status, result) {
-                if (status === 'complete' && result.poiList && result.poiList.pois.length) {
-                    var p = result.poiList.pois[0];
-                    addCompany(p.location, p.name);
-                } else { toast('未找到该地址坐标'); }
+            amapRequest('地点检索', {
+                run: function (cb) {
+                    var ps = new AMap.PlaceSearch({ city: e.poi.district || '', citylimit: true });
+                    ps.search(e.poi.name, cb);
+                },
+                isSuccess: function (s, r) { return s === 'complete' && !!(r && r.poiList && r.poiList.pois.length); },
+                onDone: function (status, result) {
+                    if (status === 'success') {
+                        var p = result.poiList.pois[0];
+                        addCompany(p.location, p.name);
+                    } else { toast('未找到该地址坐标'); }
+                }
             });
         }
         document.getElementById('companyInput').value = '';
     });
 
-    arrivalRange = new AMap.ArrivalRange();
-    walkingSearch = new AMap.Walking();
-    ridingSearch = new AMap.Riding();
-    geocoder = new AMap.Geocoder();
-    subwaySearch = new AMap.PlaceSearch({ type: '150500', pageSize: 1, extensions: 'base' });
-    // IP 定位兜底城市名（公交路径规划需要 city 参数）
+    // 各插件按需 new 独立实例（并发调用共享实例会互相取消），这里仅做 IP 定位兜底城市名（公交路径规划需要 city 参数）
     map.getCity(function (info) { if (!cityName && info.city) cityName = info.city; });
 
     document.getElementById('addCircleBtn').onclick = onAddCircle;
@@ -408,7 +652,10 @@ function initApp() {
     document.getElementById('filterMax').oninput = renderPoiList;
     document.getElementById('sortBy').onchange = renderPoiList;
 
-    restoreState();
+    document.getElementById('shareBtn').onclick = shareLink;
+
+    // 深链接（?point=lng,lat&run=1…）优先于本地保存的方案
+    if (!applyDeepLink()) restoreState();
 }
 
 /* ============ 起点位置（任意多个） ============ */
@@ -433,8 +680,11 @@ function addCompany(lnglat, name, skipSave, keepId) {
 
     // 逆地理取城市名，每个起点独立保存（跨城时公交规划需要各自 city）
     (function (mine) {
-        geocoder.getAddress(lnglat, function (status, result) {
-            if (status === 'complete' && result.regeocode) {
+        amapRequest('逆地理编码', {
+            run: function (cb) { new AMap.Geocoder().getAddress(lnglat, cb); },
+            isSuccess: function (s, r) { return s === 'complete' && !!(r && r.regeocode); },
+            onDone: function (status, result) {
+                if (status !== 'success') return;
                 var ac = result.regeocode.addressComponent;
                 mine.city = (typeof ac.city === 'string' && ac.city) ? ac.city : ac.province;
                 if (!cityName && mine.city) cityName = mine.city;
@@ -532,6 +782,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
     var comp = companies[companyId];
     if (!comp) { toast('起点不存在，请重新选择'); renderCompanySelects(); return; }
     var isTransit = (mode !== 'walk' && mode !== 'ride');
+    var precise = !isTransit && document.getElementById('preciseChk').checked;
     if (!minutes || minutes < 1 || minutes > (isTransit ? 60 : 120)) {
         toast(isTransit ? '地铁/公交圈时长需为 1-60 分钟' : '步行/骑行圈时长需为 1-120 分钟');
         return;
@@ -540,15 +791,30 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
     var circle = {
         id: ++circleSeq,
         companyId: companyId,
-        label: comp.name + ' · ' + MODE_LABEL[mode] + ' ' + minutes + ' 分钟' + (isTransit ? '' : '(近似)'),
-        mode: mode, minutes: minutes, color: color, approx: !isTransit,
+        label: comp.name + ' · ' + MODE_LABEL[mode] + ' ' + minutes + ' 分钟' + (isTransit ? '' : (precise ? '(路网)' : '(近似)')),
+        mode: mode, minutes: minutes, color: color, approx: !isTransit && !precise, precise: precise,
         polygons: [], overlays: [], visible: true
     };
     circles.push(circle);
     renderCircleList();
 
-    if (!isTransit) {
-        var speedKmH = (mode === 'walk') ? 2.8 : 9;
+    if (precise) {
+        // 精确路网圈：真实步行/骑行路径逐方向二分边界（消耗配额，约 200 次调用）
+        buildPreciseRing([comp.lnglat.lng, comp.lnglat.lat], mode, minutes, function (d, total) {
+            toast('精确' + MODE_LABEL[mode] + '圈计算中（' + d + '/' + total + ' 个方向）…', 60000);
+        }, function (ring) {
+            if (!ring || ring.length < 6) {
+                toast('精确等时圈计算失败，请稍后重试');
+                removeCircle(circle.id);
+                return;
+            }
+            circle.polygons = [[ring]];
+            addPolygonOverlay(circle, [ring]);
+            fitCircle(circle);
+            afterCirclesChanged(false);
+        });
+    } else if (!isTransit) {
+        var speedKmH = (mode === 'walk') ? currentWalkSpeed() : currentRideSpeed();
         var radius = minutes / 60 * speedKmH * 1000;
         var ring = circleRing(comp.lnglat, radius, 72);
         circle.polygons = [[ring]];
@@ -557,31 +823,41 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
         afterCirclesChanged(false);
     } else {
         toast('到达圈查询中…');
-        arrivalRange.search(comp.lnglat, minutes, function (status, result) {
+        amapRequest('到达圈', {
+            run: function (cb) {
+                // 每个圈独立实例，避免并发查询互相取消
+                var ar = new AMap.ArrivalRange();
+                ar.search(comp.lnglat, minutes, cb, { policy: mode });
+            },
             // 注意：JSAPI 2.0 的 ArrivalRange 成功时 status 也可能返回 'no_data'，
             // 必须以 result.bounds 为准（官方示例同样不检查 status）
-            if (!result || !result.bounds || !result.bounds.length) {
-                toast('未获取到到达圈（status=' + status + '），可能该区域无公交覆盖或超出配额');
-                removeCircle(circle.id);
-                return;
-            }
-            for (var i = 0; i < result.bounds.length; i++) {
-                // bounds[i] 形态各版本不一：可能是单环 [pt,...]，也可能是多环 [[pt,...],...]
-                // 统一归一化为单个 Polygon（环数组），否则下游交集计算输入错误
-                var poly = normalizeBoundsPolygon(result.bounds[i]);
-                if (poly) {
-                    circle.polygons.push(poly);
-                    addPolygonOverlay(circle, poly);
+            isSuccess: function (s, result) { return !!(result && result.bounds && result.bounds.length); },
+            onDone: function (status, result) {
+                if (status !== 'success') {
+                    toast(status === 'empty'
+                        ? '该区域暂无公交到达圈数据'
+                        : '到达圈查询失败（配额或网络原因），可稍后重试');
+                    removeCircle(circle.id);
+                    return;
                 }
+                for (var i = 0; i < result.bounds.length; i++) {
+                    // bounds[i] 形态各版本不一：可能是单环 [pt,...]，也可能是多环 [[pt,...],...]
+                    // 统一归一化为单个 Polygon（环数组），否则下游交集计算输入错误
+                    var poly = normalizeBoundsPolygon(result.bounds[i]);
+                    if (poly) {
+                        circle.polygons.push(poly);
+                        addPolygonOverlay(circle, poly);
+                    }
+                }
+                if (!circle.polygons.length) {
+                    toast('到达圈数据异常（无可用多边形），请重试');
+                    removeCircle(circle.id);
+                    return;
+                }
+                fitCircle(circle);
+                afterCirclesChanged(false);
             }
-            if (!circle.polygons.length) {
-                toast('到达圈数据异常（无可用多边形），请重试');
-                removeCircle(circle.id);
-                return;
-            }
-            fitCircle(circle);
-            afterCirclesChanged(false);
-        }, { policy: mode });
+        });
     }
     if (!skipSave) saveState();
 }
@@ -1058,15 +1334,21 @@ function rectSearchPaged(bounds, page, acc, done) {
         pageIndex: page,
         extensions: 'base'
     });
-    ps.searchInBounds('', bounds, function (status, result) {
-        if (status === 'complete' && result.poiList && result.poiList.pois && result.poiList.pois.length) {
-            acc = acc.concat(result.poiList.pois);
-            if (result.poiList.pois.length === 25 && page < 12) {
-                setTimeout(function () { rectSearchPaged(bounds, page + 1, acc, done); }, 300);
-                return;
+    amapRequest('圈内地点检索', {
+        run: function (cb) { ps.searchInBounds('', bounds, cb); },
+        isSuccess: function (s, result) {
+            return s === 'complete' && !!(result && result.poiList && result.poiList.pois && result.poiList.pois.length);
+        },
+        onDone: function (status, result) {
+            if (status === 'success') {
+                acc = acc.concat(result.poiList.pois);
+                if (result.poiList.pois.length === 25 && page < 12) {
+                    setTimeout(function () { rectSearchPaged(bounds, page + 1, acc, done); }, 200);
+                    return;
+                }
             }
+            done(acc);
         }
-        done(acc);
     });
 }
 
@@ -1092,14 +1374,20 @@ function importCandidates() {
         var kw = parts[0];
         var city = (parts[1] || '').trim() || cityName || '全国';
         // '全国'不是真实城市，只能做不限定搜索；只有明确城市名才 citylimit
-        var ps = new AMap.PlaceSearch({ city: city, citylimit: city !== '全国', pageSize: 1, extensions: 'base' });
-        ps.search(kw, function (status, result) {
-            if (status === 'complete' && result.poiList && result.poiList.pois.length) {
-                addCommunity(result.poiList.pois[0], 'import');
-                okCount++;
-            } else { fail.push(kw); }
-            toast('导入定位中（' + i + '/' + lines.length + '）…', 60000);
-            setTimeout(next, 350);
+        amapRequest('地点检索', {
+            run: function (cb) {
+                var ps = new AMap.PlaceSearch({ city: city, citylimit: city !== '全国', pageSize: 1, extensions: 'base' });
+                ps.search(kw, cb);
+            },
+            isSuccess: function (s, result) {
+                return s === 'complete' && !!(result && result.poiList && result.poiList.pois.length);
+            },
+            onDone: function (status, result) {
+                if (status === 'success') { addCommunity(result.poiList.pois[0], 'import'); okCount++; }
+                else fail.push(kw);
+                toast('导入定位中（' + i + '/' + lines.length + '）…', 60000);
+                next();
+            }
         });
     })();
 }
@@ -1110,70 +1398,104 @@ function clearCommunities() {
     renderPoiList();
 }
 
-/* ============ 真实通勤时间（任意多起点） ============ */
+/* ============ 真实通勤时间（任意多起点，带缓存、重试与小并发） ============ */
 function computeCommute(item, onDone) {
     var actives = companyList();
-    if (!actives.length) { toast('请先添加起点位置'); return; }
+    if (!actives.length) { toast('请先添加起点位置'); if (onDone) onDone(); return; }
+    var pk = poiKey(item.poi);
     var from = [item.poi.location.lng, item.poi.location.lat];
-    // 每个起点1次公交 + 最近地铁1次 + 首个起点骑行步行各1次（控制配额）
     var mainId = actives[0].id;
-    var pending = actives.length + 1 + 2;
-
-    function finish() {
-        if (--pending > 0) return;
-        updateItemView(item);
-        if (onDone) onDone();
-        else openInfo(item);
-    }
+    var mainComp = actives[0];
+    var toMain = [mainComp.lnglat.lng, mainComp.lnglat.lat];
+    var mkey = coordKey(mainComp.lnglat);
+    // 每个起点1次公交 + 最近地铁1次 + 首个起点骑行步行各1次（控制配额）
+    var tasks = [];
 
     actives.forEach(function (comp) {
         var to = [comp.lnglat.lng, comp.lnglat.lat];
-        // 公交路径规划必须指定城市，优先用该起点自身的城市（支持跨城多起点）
-        var ts = new AMap.Transfer({ city: comp.city || cityName || '全国', policy: AMap.TransferPolicy.LEAST_TIME });
-        (function (cid) {
-            ts.search(from, to, function (status, res) {
-                if (status === 'complete' && res.plans && res.plans.length) {
-                    var plan = res.plans[0];
-                    var segs = (plan.segments || []).filter(function (s) { return s.transit; });
-                    item.data[cid] = {
-                        mins: Math.round(plan.time / 60),
-                        transfers: segs.length > 0 ? segs.length - 1 : 0,
-                        walkKm: ((plan.walking_distance || 0) / 1000).toFixed(1)
-                    };
-                } else {
-                    item.data[cid] = { mins: null };
-                }
-                finish();
-            });
-        })(comp.id);
+        var okey = coordKey(comp.lnglat);
+        tasks.push({
+            key: 'T|' + okey + '|' + pk,
+            label: '公交规划',
+            run: function (cb) {
+                // 公交路径规划必须指定城市，优先用该起点自身的城市（支持跨城多起点）
+                var ts = new AMap.Transfer({ city: comp.city || cityName || '全国', policy: AMap.TransferPolicy.LEAST_TIME });
+                ts.search(from, to, cb);
+            },
+            isSuccess: function (s, r) { return s === 'complete' && !!(r && r.plans && r.plans.length); },
+            ok: function (r) {
+                var plan = r.plans[0];
+                var segs = (plan.segments || []).filter(function (sg) { return sg.transit; });
+                return {
+                    mins: Math.round(plan.time / 60),
+                    transfers: segs.length > 0 ? segs.length - 1 : 0,
+                    walkKm: ((plan.walking_distance || 0) / 1000).toFixed(1)
+                };
+            },
+            empty: { mins: null },           // 完成但无公交方案：可缓存，之后不再浪费配额
+            fail: { mins: null, err: true }, // 配额/网络失败：不缓存，点击重试
+            assign: function (v) { item.data[comp.id] = v; }
+        });
     });
 
-    // 最近地铁站（步行到站距离是租房关键指标）
-    subwaySearch.searchNearBy('', item.poi.location, 3000, function (status, res) {
-        if (status === 'complete' && res.poiList && res.poiList.pois.length) {
-            var st = res.poiList.pois[0];
-            item.data.subway = {
-                name: st.name,
-                dist: Math.round(AMap.GeometryUtil.distance(st.location, item.poi.location))
-            };
-        } else { item.data.subway = null; }
-        finish();
+    // 最近地铁站（步行到站距离是租房关键指标）；每次新建实例，避免并发查询互相取消
+    tasks.push({
+        key: 'S|' + pk,
+        label: '附近地铁',
+        run: function (cb) {
+            var ps = new AMap.PlaceSearch({ type: '150500', pageSize: 1, extensions: 'base' });
+            ps.searchNearBy('', item.poi.location, 3000, cb);
+        },
+        isSuccess: function (s, r) { return s === 'complete' && !!(r && r.poiList && r.poiList.pois.length); },
+        ok: function (r) {
+            var st = r.poiList.pois[0];
+            return { name: st.name, dist: Math.round(AMap.GeometryUtil.distance(st.location, item.poi.location)) };
+        },
+        empty: null, fail: null,
+        assign: function (v) { item.data.subway = v; }
+    });
+    tasks.push({
+        key: 'R|' + mkey + '|' + pk,
+        label: '骑行规划',
+        run: function (cb) { new AMap.Riding().search(from, toMain, cb); },
+        isSuccess: function (s, r) { return s === 'complete' && !!(r && r.routes && r.routes.length); },
+        ok: function (r) { return Math.round(r.routes[0].time / 60); },
+        empty: null, fail: null,
+        assign: function (v) { item.data.ride = v; item.data.rideTo = mainId; }
+    });
+    tasks.push({
+        key: 'W|' + mkey + '|' + pk,
+        label: '步行规划',
+        run: function (cb) { new AMap.Walking().search(from, toMain, cb); },
+        isSuccess: function (s, r) { return s === 'complete' && !!(r && r.routes && r.routes.length); },
+        ok: function (r) { return Math.round(r.routes[0].time / 60); },
+        empty: null, fail: null,
+        assign: function (v) { item.data.walk = v; item.data.walkTo = mainId; }
     });
 
-    var mainComp = actives[0];
-    var toMain = [mainComp.lnglat.lng, mainComp.lnglat.lat];
-    ridingSearch.search(from, toMain, function (status, res) {
-        item.data.ride = (status === 'complete' && res.routes && res.routes.length)
-            ? Math.round(res.routes[0].time / 60) : null;
-        item.data.rideTo = mainId;
-        finish();
+    var pending = 0;
+    function finishIfDone() {
+        if (pending !== 0) return;
+        updateItemView(item);
+        persistCommuteCache();
+        if (onDone) onDone(); else openInfo(item);
+    }
+    tasks.forEach(function (t) {
+        if (commuteCache[t.key] !== undefined) { t.assign(commuteCache[t.key]); return; }
+        pending++;
+        amapRequest(t.label, {
+            run: t.run,
+            isSuccess: t.isSuccess,
+            onDone: function (status, result) {
+                var v = status === 'success' ? t.ok(result) : (status === 'empty' ? t.empty : t.fail);
+                if (status !== 'error') commuteCache[t.key] = v;   // 失败不缓存，保留重试机会
+                t.assign(v);
+                pending--;
+                finishIfDone();
+            }
+        });
     });
-    walkingSearch.search(from, toMain, function (status, res) {
-        item.data.walk = (status === 'complete' && res.routes && res.routes.length)
-            ? Math.round(res.routes[0].time / 60) : null;
-        item.data.walkTo = mainId;
-        finish();
-    });
+    finishIfDone();   // 全部命中缓存时直接完成
 }
 
 function maxMins(item) {
@@ -1199,6 +1521,7 @@ function commuteHTML(item) {
         var d = item.data[comp.id];
         var shortName = comp.name.length > 6 ? comp.name.slice(0, 6) + '…' : comp.name;
         if (!d) { parts.push('<span class="badge">' + shortName + ' 未计算</span>'); return; }
+        if (d.err) { parts.push('<span class="badge r">' + shortName + ' 计算失败·点我重试</span>'); return; }
         if (d.mins == null) { parts.push('<span class="badge">' + shortName + ' 无公交方案</span>'); return; }
         parts.push('<span class="badge ' + badgeClass(d.mins) + '">' + shortName + ' 公交 ' + d.mins + '′ 换乘' + d.transfers + '</span>');
     });
@@ -1242,22 +1565,27 @@ function batchCommute() {
     if (list.length > 80) { toast('候选过多，请先筛选（一次最多批量 80 个）'); list = list.slice(0, 80); }
     batchRunning = true;
     document.getElementById('batchBtn').disabled = true;
-    var i = 0;
-    toast('批量计算中（0/' + list.length + '）…', 600000);
-    (function next() {
-        if (i >= list.length) {
-            batchRunning = false;
-            document.getElementById('batchBtn').disabled = false;
-            renderPoiList();
-            toast('批量计算完成，列表已按通勤时间排序');
-            return;
-        }
-        var item = list[i++];
+    var total = list.length, doneCount = 0, idx = 0;
+    toast('批量计算中（0/' + total + '）…', 600000);
+    function finishAll() {
+        batchRunning = false;
+        document.getElementById('batchBtn').disabled = false;
+        persistCommuteCache();
+        renderPoiList();
+        toast('批量计算完成，列表已按通勤时间排序');
+    }
+    function worker() {
+        if (idx >= list.length) return;
+        var item = list[idx++];
         computeCommute(item, function () {
-            toast('批量计算中（' + i + '/' + list.length + '）…', 600000);
-            setTimeout(next, 400);
+            doneCount++;
+            if (doneCount >= total) { finishAll(); return; }
+            toast('批量计算中（' + doneCount + '/' + total + '）…', 600000);
+            worker();
         });
-    })();
+    }
+    // 3 路并发 + 全局令牌桶限流：总吞吐由限流器约束，并发只降低单点等待
+    for (var w = 0; w < Math.min(3, list.length); w++) worker();
 }
 
 /* ============ 列表渲染：排序 + 筛选 ============ */
