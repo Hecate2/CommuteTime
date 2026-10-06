@@ -44,8 +44,8 @@ def fail(message: str) -> "SystemExit":
     return SystemExit(f"error: {message}")
 
 
-def read_rows(path: Path, required_columns: list[str], encoding: str = "utf-8"):
-    """读取 CSV 并校验必需列，缺失文件/列时给出清晰报错。"""
+def read_rows(path: Path, required_columns: list[str], encoding: str = "utf-8-sig"):
+    """读取 CSV 并校验必需列，缺失文件/列时给出清晰报错。utf-8-sig 同时兼容带/不带 BOM。"""
     if not path.is_file():
         raise fail(f"输入文件不存在: {path}")
     with path.open(newline="", encoding=encoding) as f:

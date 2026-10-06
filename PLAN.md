@@ -19,7 +19,7 @@
 
 ### 朋友项目（git clone / pull 到本地后）—— 原则上**不改代码**，只做配置与操作
 
-- `.env` 配置高德 **Web 服务** key + 数字签名私钥（注意与本项目的 JS API key 是两套凭证）。
+- `.env` 配置高德 **Web 服务** key + 数字签名私钥（✅已做）。
 - 上海需先跑 `shmetro_accessibility_legacy.py` 生成 `stations_all.csv` 站点目录。
 - 先 `--resolve-only` 验证站点匹配质量（看 `amap_station_matches.md`），再 `--max-routes 80` 冒烟，最后长跑全量。
 - 用 `--date/--time` 指定非节假日工作日的早高峰出发时间（默认 7:15）。

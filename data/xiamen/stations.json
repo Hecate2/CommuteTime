@@ -1,0 +1,1242 @@
+{
+  "groups": [
+    {
+      "id": "g001",
+      "name": "火炬园",
+      "lng": 118.118777,
+      "lat": 24.511879,
+      "lines": [
+        "1号线",
+        "3号线"
+      ],
+      "avg_minutes": 25.8,
+      "rank": 1,
+      "nodes": [
+        "1:01-torch-hi-tech-park",
+        "3:03-torch-hi-tech-park"
+      ]
+    },
+    {
+      "id": "g002",
+      "name": "吕厝",
+      "lng": 118.127959,
+      "lat": 24.49068,
+      "lines": [
+        "1号线",
+        "2号线"
+      ],
+      "avg_minutes": 26.0,
+      "rank": 3,
+      "nodes": [
+        "1:01-lvcuo",
+        "2:02-lvcuo"
+      ]
+    },
+    {
+      "id": "g003",
+      "name": "乌石浦",
+      "lng": 118.126403,
+      "lat": 24.498734,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 27.8,
+      "rank": 5,
+      "nodes": [
+        "1:01-wushipu"
+      ]
+    },
+    {
+      "id": "g004",
+      "name": "体育中心",
+      "lng": 118.105603,
+      "lat": 24.484551,
+      "lines": [
+        "2号线",
+        "3号线"
+      ],
+      "avg_minutes": 27.9,
+      "rank": 6,
+      "nodes": [
+        "2:02-sports-center",
+        "3:03-sports-center"
+      ]
+    },
+    {
+      "id": "g005",
+      "name": "塘边",
+      "lng": 118.122619,
+      "lat": 24.506304,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 28.1,
+      "rank": 8,
+      "nodes": [
+        "1:01-tangbian"
+      ]
+    },
+    {
+      "id": "g006",
+      "name": "殿前",
+      "lng": 118.11617,
+      "lat": 24.524893,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 28.2,
+      "rank": 9,
+      "nodes": [
+        "1:01-dianqian"
+      ]
+    },
+    {
+      "id": "g007",
+      "name": "华荣路",
+      "lng": 118.109289,
+      "lat": 24.511515,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 28.6,
+      "rank": 10,
+      "nodes": [
+        "3:03-huarong-road"
+      ]
+    },
+    {
+      "id": "g008",
+      "name": "小东山",
+      "lng": 118.125966,
+      "lat": 24.514116,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 28.6,
+      "rank": 11,
+      "nodes": [
+        "3:03-xiaodongshan"
+      ]
+    },
+    {
+      "id": "g009",
+      "name": "高崎",
+      "lng": 118.116833,
+      "lat": 24.53753,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 29.0,
+      "rank": 12,
+      "nodes": [
+        "1:01-gaoqi"
+      ]
+    },
+    {
+      "id": "g010",
+      "name": "湖里公园",
+      "lng": 118.105518,
+      "lat": 24.506732,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 29.0,
+      "rank": 13,
+      "nodes": [
+        "3:03-huli-park"
+      ]
+    },
+    {
+      "id": "g011",
+      "name": "湖滨东路",
+      "lng": 118.110656,
+      "lat": 24.474027,
+      "lines": [
+        "1号线",
+        "3号线"
+      ],
+      "avg_minutes": 29.2,
+      "rank": 14,
+      "nodes": [
+        "1:01-hubin-east-road",
+        "3:03-hubin-east-road"
+      ]
+    },
+    {
+      "id": "g012",
+      "name": "安兜",
+      "lng": 118.138383,
+      "lat": 24.5178,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 29.4,
+      "rank": 16,
+      "nodes": [
+        "3:03-andou"
+      ]
+    },
+    {
+      "id": "g013",
+      "name": "人才中心",
+      "lng": 118.103277,
+      "lat": 24.489196,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 29.8,
+      "rank": 17,
+      "nodes": [
+        "3:03-hr-service-center"
+      ]
+    },
+    {
+      "id": "g014",
+      "name": "莲花路口",
+      "lng": 118.122857,
+      "lat": 24.483483,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 30.0,
+      "rank": 18,
+      "nodes": [
+        "1:01-lianhua-intersection"
+      ]
+    },
+    {
+      "id": "g015",
+      "name": "集美学村",
+      "lng": 118.092434,
+      "lat": 24.563902,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 30.1,
+      "rank": 19,
+      "nodes": [
+        "1:01-jimei-school-village"
+      ]
+    },
+    {
+      "id": "g016",
+      "name": "育秀东路",
+      "lng": 118.113059,
+      "lat": 24.485516,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 30.2,
+      "rank": 20,
+      "nodes": [
+        "2:02-yuxiu-east-road"
+      ]
+    },
+    {
+      "id": "g017",
+      "name": "湖里创新园",
+      "lng": 118.156149,
+      "lat": 24.522939,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 30.3,
+      "rank": 21,
+      "nodes": [
+        "3:03-huli-innovation-park"
+      ]
+    },
+    {
+      "id": "g018",
+      "name": "坂尚",
+      "lng": 118.146742,
+      "lat": 24.519206,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 30.4,
+      "rank": 22,
+      "nodes": [
+        "3:03-banshang"
+      ]
+    },
+    {
+      "id": "g019",
+      "name": "蔡塘",
+      "lng": 118.153481,
+      "lat": 24.487156,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 30.6,
+      "rank": 23,
+      "nodes": [
+        "2:02-caitang"
+      ]
+    },
+    {
+      "id": "g020",
+      "name": "园博苑",
+      "lng": 118.06685,
+      "lat": 24.570056,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 30.9,
+      "rank": 24,
+      "nodes": [
+        "1:01-horticulture-expo-garden"
+      ]
+    },
+    {
+      "id": "g021",
+      "name": "五缘湾",
+      "lng": 118.167067,
+      "lat": 24.532477,
+      "lines": [
+        "2号线",
+        "3号线"
+      ],
+      "avg_minutes": 30.9,
+      "rank": 25,
+      "nodes": [
+        "2:02-wuyuanwan",
+        "3:03-wuyuanwan"
+      ]
+    },
+    {
+      "id": "g022",
+      "name": "官任",
+      "lng": 118.058588,
+      "lat": 24.593633,
+      "lines": [
+        "1号线",
+        "6号线"
+      ],
+      "avg_minutes": 31.0,
+      "rank": 27,
+      "nodes": [
+        "1:01-guanren",
+        "5:05-guanren"
+      ]
+    },
+    {
+      "id": "g023",
+      "name": "江头",
+      "lng": 118.137911,
+      "lat": 24.492323,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 31.0,
+      "rank": 29,
+      "nodes": [
+        "2:02-jiangtou"
+      ]
+    },
+    {
+      "id": "g024",
+      "name": "湖滨中路",
+      "lng": 118.094744,
+      "lat": 24.480508,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 31.2,
+      "rank": 30,
+      "nodes": [
+        "2:02-hubin-middle-road"
+      ]
+    },
+    {
+      "id": "g025",
+      "name": "杏锦路",
+      "lng": 118.05737,
+      "lat": 24.581184,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 31.5,
+      "rank": 31,
+      "nodes": [
+        "1:01-xingjin-road"
+      ]
+    },
+    {
+      "id": "g026",
+      "name": "杏林村",
+      "lng": 118.06147,
+      "lat": 24.577025,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 31.5,
+      "rank": 32,
+      "nodes": [
+        "1:01-xinglin-village"
+      ]
+    },
+    {
+      "id": "g027",
+      "name": "莲坂",
+      "lng": 118.118196,
+      "lat": 24.476107,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 31.6,
+      "rank": 33,
+      "nodes": [
+        "1:01-lianban"
+      ]
+    },
+    {
+      "id": "g028",
+      "name": "厦门火车站",
+      "lng": 118.114674,
+      "lat": 24.469258,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 31.7,
+      "rank": 34,
+      "nodes": [
+        "3:03-xiamen-railway-station"
+      ]
+    },
+    {
+      "id": "g029",
+      "name": "后埔",
+      "lng": 118.145838,
+      "lat": 24.489755,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 31.7,
+      "rank": 35,
+      "nodes": [
+        "2:02-houpu"
+      ]
+    },
+    {
+      "id": "g030",
+      "name": "建业路",
+      "lng": 118.083597,
+      "lat": 24.478032,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 32.0,
+      "rank": 36,
+      "nodes": [
+        "2:02-jianye-road"
+      ]
+    },
+    {
+      "id": "g031",
+      "name": "古地石",
+      "lng": 118.163646,
+      "lat": 24.485644,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 33.4,
+      "rank": 37,
+      "nodes": [
+        "2:02-gudishi"
+      ]
+    },
+    {
+      "id": "g032",
+      "name": "邮轮中心",
+      "lng": 118.077155,
+      "lat": 24.484959,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 33.6,
+      "rank": 38,
+      "nodes": [
+        "2:02-cruise-center"
+      ]
+    },
+    {
+      "id": "g033",
+      "name": "文灶",
+      "lng": 118.103441,
+      "lat": 24.467703,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 33.9,
+      "rank": 39,
+      "nodes": [
+        "1:01-wenzao"
+      ]
+    },
+    {
+      "id": "g034",
+      "name": "岭兜",
+      "lng": 118.17386,
+      "lat": 24.484305,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 34.1,
+      "rank": 40,
+      "nodes": [
+        "2:02-lingdou"
+      ]
+    },
+    {
+      "id": "g035",
+      "name": "诚毅广场",
+      "lng": 118.054048,
+      "lat": 24.603706,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 34.3,
+      "rank": 41,
+      "nodes": [
+        "1:01-chengyi-plaza"
+      ]
+    },
+    {
+      "id": "g036",
+      "name": "国际博览中心",
+      "lng": 118.208711,
+      "lat": 24.556576,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 34.4,
+      "rank": 42,
+      "nodes": [
+        "3:03-international-expo-center"
+      ]
+    },
+    {
+      "id": "g037",
+      "name": "软件园二期",
+      "lng": 118.185164,
+      "lat": 24.480522,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 35.0,
+      "rank": 43,
+      "nodes": [
+        "2:02-software-park-phase-ii"
+      ]
+    },
+    {
+      "id": "g038",
+      "name": "海沧湾公园",
+      "lng": 118.050287,
+      "lat": 24.484648,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 35.1,
+      "rank": 44,
+      "nodes": [
+        "2:02-haicang-bay-park"
+      ]
+    },
+    {
+      "id": "g039",
+      "name": "马青路",
+      "lng": 118.030109,
+      "lat": 24.493865,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 35.8,
+      "rank": 45,
+      "nodes": [
+        "2:02-maqing-road"
+      ]
+    },
+    {
+      "id": "g040",
+      "name": "将军祠",
+      "lng": 118.099835,
+      "lat": 24.460767,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 36.0,
+      "rank": 46,
+      "nodes": [
+        "1:01-jiangjunci"
+      ]
+    },
+    {
+      "id": "g041",
+      "name": "海沧商务中心",
+      "lng": 118.039363,
+      "lat": 24.480889,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 36.3,
+      "rank": 47,
+      "nodes": [
+        "2:02-haicang-business-center"
+      ]
+    },
+    {
+      "id": "g042",
+      "name": "东界",
+      "lng": 118.21945,
+      "lat": 24.564844,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 36.4,
+      "rank": 48,
+      "nodes": [
+        "3:03-dongjie"
+      ]
+    },
+    {
+      "id": "g043",
+      "name": "集美软件园",
+      "lng": 118.047934,
+      "lat": 24.613351,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 36.6,
+      "rank": 49,
+      "nodes": [
+        "1:01-jimei-software-park"
+      ]
+    },
+    {
+      "id": "g044",
+      "name": "集美大道",
+      "lng": 118.055548,
+      "lat": 24.620221,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 36.8,
+      "rank": 50,
+      "nodes": [
+        "1:01-jimei-boulevard"
+      ]
+    },
+    {
+      "id": "g045",
+      "name": "钟宅",
+      "lng": 118.173035,
+      "lat": 24.523927,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 37.0,
+      "rank": 51,
+      "nodes": [
+        "2:02-zhongzhai"
+      ]
+    },
+    {
+      "id": "g046",
+      "name": "洪坑",
+      "lng": 118.226167,
+      "lat": 24.571068,
+      "lines": [
+        "3号线",
+        "4号线"
+      ],
+      "avg_minutes": 37.2,
+      "rank": 52,
+      "nodes": [
+        "3:03-hongkeng",
+        "4:04-hongkeng"
+      ]
+    },
+    {
+      "id": "g047",
+      "name": "海沧行政中心",
+      "lng": 118.033102,
+      "lat": 24.487526,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 37.3,
+      "rank": 54,
+      "nodes": [
+        "2:02-haicang-administrative-center"
+      ]
+    },
+    {
+      "id": "g048",
+      "name": "华侨大学",
+      "lng": 118.088847,
+      "lat": 24.596637,
+      "lines": [
+        "6号线"
+      ],
+      "avg_minutes": 37.4,
+      "rank": 55,
+      "nodes": [
+        "5:05-huaqiao-university"
+      ]
+    },
+    {
+      "id": "g049",
+      "name": "天水路",
+      "lng": 118.066175,
+      "lat": 24.625994,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 37.7,
+      "rank": 56,
+      "nodes": [
+        "1:01-tianshui-road"
+      ]
+    },
+    {
+      "id": "g050",
+      "name": "何厝",
+      "lng": 118.19267,
+      "lat": 24.4852,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 37.8,
+      "rank": 57,
+      "nodes": [
+        "2:02-hecuo"
+      ]
+    },
+    {
+      "id": "g051",
+      "name": "杏林湾",
+      "lng": 118.074829,
+      "lat": 24.602334,
+      "lines": [
+        "6号线"
+      ],
+      "avg_minutes": 37.8,
+      "rank": 58,
+      "nodes": [
+        "5:05-xinglinwan"
+      ]
+    },
+    {
+      "id": "g052",
+      "name": "中山公园",
+      "lng": 118.089851,
+      "lat": 24.455683,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 37.9,
+      "rank": 59,
+      "nodes": [
+        "1:01-zhongshan-park"
+      ]
+    },
+    {
+      "id": "g053",
+      "name": "观音山",
+      "lng": 118.19279,
+      "lat": 24.493542,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 38.2,
+      "rank": 60,
+      "nodes": [
+        "2:02-guanyinshan"
+      ]
+    },
+    {
+      "id": "g054",
+      "name": "林前",
+      "lng": 118.231969,
+      "lat": 24.576048,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 38.3,
+      "rank": 61,
+      "nodes": [
+        "3:03-linqian"
+      ]
+    },
+    {
+      "id": "g055",
+      "name": "厦门北站",
+      "lng": 118.073982,
+      "lat": 24.636379,
+      "lines": [
+        "1号线",
+        "4号线"
+      ],
+      "avg_minutes": 38.4,
+      "rank": 62,
+      "nodes": [
+        "1:01-xiamen-north-railway-station",
+        "4:04-xiamen-north-railway-station"
+      ]
+    },
+    {
+      "id": "g056",
+      "name": "董任",
+      "lng": 118.047845,
+      "lat": 24.579604,
+      "lines": [
+        "6号线"
+      ],
+      "avg_minutes": 38.6,
+      "rank": 64,
+      "nodes": [
+        "5:05-dongren"
+      ]
+    },
+    {
+      "id": "g057",
+      "name": "翁角路",
+      "lng": 118.014494,
+      "lat": 24.526134,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 38.8,
+      "rank": 65,
+      "nodes": [
+        "2:02-wengjiao-road"
+      ]
+    },
+    {
+      "id": "g058",
+      "name": "镇海路",
+      "lng": 118.082837,
+      "lat": 24.450496,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 38.9,
+      "rank": 66,
+      "nodes": [
+        "1:01-zhenhai-road"
+      ]
+    },
+    {
+      "id": "g059",
+      "name": "东宅",
+      "lng": 118.192904,
+      "lat": 24.499272,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 38.9,
+      "rank": 67,
+      "nodes": [
+        "2:02-dongzhai"
+      ]
+    },
+    {
+      "id": "g060",
+      "name": "两岸金融中心",
+      "lng": 118.193991,
+      "lat": 24.505456,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 39.0,
+      "rank": 68,
+      "nodes": [
+        "2:02-cross-strait-financial-center"
+      ]
+    },
+    {
+      "id": "g061",
+      "name": "马銮中心",
+      "lng": 117.987705,
+      "lat": 24.54604,
+      "lines": [
+        "2号线",
+        "6号线"
+      ],
+      "avg_minutes": 39.2,
+      "rank": 69,
+      "nodes": [
+        "2:02-maluan-center",
+        "5:05-maluan-center"
+      ]
+    },
+    {
+      "id": "g062",
+      "name": "湿地公园",
+      "lng": 118.183577,
+      "lat": 24.516475,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 39.3,
+      "rank": 71,
+      "nodes": [
+        "2:02-wetland-park"
+      ]
+    },
+    {
+      "id": "g063",
+      "name": "新垵",
+      "lng": 118.005933,
+      "lat": 24.530788,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 39.6,
+      "rank": 72,
+      "nodes": [
+        "2:02-xin-an"
+      ]
+    },
+    {
+      "id": "g064",
+      "name": "五通",
+      "lng": 118.189562,
+      "lat": 24.511615,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 39.7,
+      "rank": 73,
+      "nodes": [
+        "2:02-wutong"
+      ]
+    },
+    {
+      "id": "g065",
+      "name": "内茂",
+      "lng": 118.043949,
+      "lat": 24.572406,
+      "lines": [
+        "6号线"
+      ],
+      "avg_minutes": 39.7,
+      "rank": 74,
+      "nodes": [
+        "5:05-neimao"
+      ]
+    },
+    {
+      "id": "g066",
+      "name": "杏滨",
+      "lng": 118.040176,
+      "lat": 24.566025,
+      "lines": [
+        "6号线"
+      ],
+      "avg_minutes": 40.0,
+      "rank": 75,
+      "nodes": [
+        "5:05-xingbin"
+      ]
+    },
+    {
+      "id": "g067",
+      "name": "鼓锣",
+      "lng": 118.24417,
+      "lat": 24.578474,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 40.1,
+      "rank": 76,
+      "nodes": [
+        "3:03-guluo"
+      ]
+    },
+    {
+      "id": "g068",
+      "name": "碑头",
+      "lng": 118.02917,
+      "lat": 24.565161,
+      "lines": [
+        "6号线"
+      ],
+      "avg_minutes": 40.6,
+      "rank": 77,
+      "nodes": [
+        "5:05-beitou"
+      ]
+    },
+    {
+      "id": "g069",
+      "name": "鼎美",
+      "lng": 117.974291,
+      "lat": 24.547034,
+      "lines": [
+        "2号线",
+        "6号线"
+      ],
+      "avg_minutes": 40.9,
+      "rank": 78,
+      "nodes": [
+        "2:02-dingmei",
+        "5:05-dingmei"
+      ]
+    },
+    {
+      "id": "g070",
+      "name": "岩内",
+      "lng": 118.070247,
+      "lat": 24.643109,
+      "lines": [
+        "1号线"
+      ],
+      "avg_minutes": 40.9,
+      "rank": 80,
+      "nodes": [
+        "1:01-yannei"
+      ]
+    },
+    {
+      "id": "g071",
+      "name": "城场",
+      "lng": 118.210173,
+      "lat": 24.631283,
+      "lines": [
+        "4号线"
+      ],
+      "avg_minutes": 41.1,
+      "rank": 81,
+      "nodes": [
+        "4:04-chengchang"
+      ]
+    },
+    {
+      "id": "g072",
+      "name": "西滨",
+      "lng": 118.020014,
+      "lat": 24.565489,
+      "lines": [
+        "6号线"
+      ],
+      "avg_minutes": 41.9,
+      "rank": 82,
+      "nodes": [
+        "5:05-xibin"
+      ]
+    },
+    {
+      "id": "g073",
+      "name": "翔安市民公园",
+      "lng": 118.253521,
+      "lat": 24.578768,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 42.0,
+      "rank": 83,
+      "nodes": [
+        "3:03-xiang-an-public-park"
+      ]
+    },
+    {
+      "id": "g074",
+      "name": "新阳大道",
+      "lng": 117.995312,
+      "lat": 24.537185,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 42.4,
+      "rank": 84,
+      "nodes": [
+        "2:02-xinyang-avenue"
+      ]
+    },
+    {
+      "id": "g075",
+      "name": "浦边",
+      "lng": 118.26325,
+      "lat": 24.580246,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 43.8,
+      "rank": 85,
+      "nodes": [
+        "3:03-pubian"
+      ]
+    },
+    {
+      "id": "g076",
+      "name": "后溪",
+      "lng": 118.049023,
+      "lat": 24.624478,
+      "lines": [
+        "4号线"
+      ],
+      "avg_minutes": 43.9,
+      "rank": 86,
+      "nodes": [
+        "4:04-houxi"
+      ]
+    },
+    {
+      "id": "g077",
+      "name": "后村",
+      "lng": 118.271548,
+      "lat": 24.580158,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 44.7,
+      "rank": 87,
+      "nodes": [
+        "3:03-houcun"
+      ]
+    },
+    {
+      "id": "g078",
+      "name": "东瑶",
+      "lng": 117.961777,
+      "lat": 24.549628,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 44.8,
+      "rank": 88,
+      "nodes": [
+        "2:02-dongyao"
+      ]
+    },
+    {
+      "id": "g079",
+      "name": "丙洲",
+      "lng": 118.172577,
+      "lat": 24.63768,
+      "lines": [
+        "4号线"
+      ],
+      "avg_minutes": 46.1,
+      "rank": 89,
+      "nodes": [
+        "4:04-bingzhou"
+      ]
+    },
+    {
+      "id": "g080",
+      "name": "前浯",
+      "lng": 118.253566,
+      "lat": 24.561239,
+      "lines": [
+        "4号线"
+      ],
+      "avg_minutes": 46.6,
+      "rank": 90,
+      "nodes": [
+        "4:04-qianwu"
+      ]
+    },
+    {
+      "id": "g081",
+      "name": "蔡厝",
+      "lng": 118.279123,
+      "lat": 24.572625,
+      "lines": [
+        "3号线"
+      ],
+      "avg_minutes": 46.7,
+      "rank": 91,
+      "nodes": [
+        "3:03-caicuo"
+      ]
+    },
+    {
+      "id": "g082",
+      "name": "官浔",
+      "lng": 118.148552,
+      "lat": 24.652681,
+      "lines": [
+        "4号线"
+      ],
+      "avg_minutes": 47.0,
+      "rank": 92,
+      "nodes": [
+        "4:04-guanxun"
+      ]
+    },
+    {
+      "id": "g083",
+      "name": "东孚",
+      "lng": 117.947532,
+      "lat": 24.566354,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 47.7,
+      "rank": 93,
+      "nodes": [
+        "2:02-dongfu"
+      ]
+    },
+    {
+      "id": "g084",
+      "name": "林埭",
+      "lng": 117.957777,
+      "lat": 24.542474,
+      "lines": [
+        "6号线"
+      ],
+      "avg_minutes": 48.2,
+      "rank": 94,
+      "nodes": [
+        "5:05-lindai"
+      ]
+    },
+    {
+      "id": "g085",
+      "name": "天竺山",
+      "lng": 117.936836,
+      "lat": 24.578677,
+      "lines": [
+        "2号线"
+      ],
+      "avg_minutes": 49.6,
+      "rank": 95,
+      "nodes": [
+        "2:02-tianzhushan"
+      ]
+    },
+    {
+      "id": "g086",
+      "name": "集美软件园北",
+      "lng": 118.036542,
+      "lat": 24.617429,
+      "lines": [
+        "4号线"
+      ],
+      "avg_minutes": 50.1,
+      "rank": 96,
+      "nodes": [
+        "4:04-jimei-software-park-north"
+      ]
+    },
+    {
+      "id": "g087",
+      "name": "一农",
+      "lng": 117.947977,
+      "lat": 24.536294,
+      "lines": [
+        "6号线"
+      ],
+      "avg_minutes": 50.2,
+      "rank": 97,
+      "nodes": [
+        "5:05-yinong"
+      ]
+    }
+  ]
+}

@@ -4,6 +4,11 @@
       "city": "shanghai",
       "city_name": "上海",
       "group_count": 12
+    },
+    {
+      "city": "xiamen",
+      "city_name": "厦门",
+      "group_count": 87
     }
   ]
 }
