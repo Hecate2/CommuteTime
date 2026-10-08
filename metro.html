@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+<meta name="viewport" content="initial-scale=1.0, maximum-scale=5.0, width=device-width">
 <title>地铁可达性 · 等时圈通勤工具</title>
 <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -102,18 +102,55 @@
     .modal-box p { font-size: 13px; color: #4b5563; line-height: 1.7; margin-bottom: 12px; }
     .modal-box input { margin-bottom: 8px; }
     .modal-box .actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+    button:focus-visible, a:focus-visible, summary:focus-visible,
+    input:focus-visible, select:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+    .cross-link { font-size: 12px; font-weight: normal; color: #9ca3af; text-decoration: none; white-space: nowrap; }
+    .cross-link:hover { color: #2563eb; text-decoration: underline; }
+    .spinner {
+        display: inline-block; width: 13px; height: 13px; border-radius: 50%;
+        border: 2px solid #d1d5db; border-top-color: #2563eb;
+        animation: spin .8s linear infinite; vertical-align: -2px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #mapPlaceholder {
+        position: absolute; inset: 0; z-index: 5; display: none;
+        flex-direction: column; align-items: center; justify-content: center;
+        background: #f3f4f6; color: #4b5563; font-size: 14px; text-align: center; padding: 20px;
+    }
+    .row-go {
+        height: 24px; padding: 0 8px; margin: 0; font-size: 14px;
+        background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
+    }
+    #panelGrabber {
+        display: none; width: 100%; height: 22px; margin: 0; padding: 0;
+        background: #fff; border: none; border-bottom: 1px solid #f3f4f6; border-radius: 0;
+        align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    #panelGrabber span { width: 36px; height: 4px; border-radius: 2px; background: #d1d5db; }
     @media (max-width: 768px) {
         #app { flex-direction: column; }
-        #panel { width: 100%; height: 46%; border-right: none; border-bottom: 1px solid #e5e7eb; }
-        #container { height: 54%; }
+        #container { order: 1; flex: 1; height: auto; min-height: 0; }
+        #panel {
+            order: 2; width: 100%; height: 46%; flex-shrink: 0;
+            border-right: none; border-top: 1px solid #e5e7eb;
+            position: relative; transition: height .25s ease;
+        }
+        #panel.collapsed { height: 15%; }
+        #panel.expanded { height: 85%; }
+        #panelGrabber { display: flex; }
+        button, input[type=text], select { height: 36px; }
+        .rank-table th, .rank-table td { padding: 8px 6px; }
+        .dest-item { padding: 8px 6px; min-height: 36px; }
+        #legend { left: 10px; right: auto; bottom: 14px; font-size: 11px; padding: 6px 8px; }
     }
 </style>
 </head>
 <body>
 <div id="app">
     <aside id="panel">
+        <button id="panelGrabber" aria-label="展开或收起面板"><span></span></button>
         <div id="panelScroll">
-            <h1>🚇 地铁可达性 · 等时圈通勤工具</h1>
+            <h1>🚇 地铁可达性 · 等时圈通勤工具 <a class="cross-link" href="index.html">→ 分析我的通勤</a></h1>
 
             <section>
                 <details>
@@ -144,6 +181,7 @@
                             <th>站名</th>
                             <th class="sortable" id="avgSortTh">平均分钟 ⇅</th>
                             <th>线路</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody id="rankBody"></tbody>
@@ -165,9 +203,14 @@
     </aside>
     <div id="container">
         <div id="legend"></div>
+        <div id="mapPlaceholder">
+            <p>配置高德密钥后查看地图可视化</p>
+            <p class="hint">排行榜与单站可达列表无需密钥，可正常浏览</p>
+            <button id="goConfigBtn">去配置</button>
+        </div>
     </div>
 </div>
-<div id="toast"></div>
+<div id="toast" aria-live="polite"></div>
 
 <div id="keyModal">
     <div class="modal-box">
@@ -178,6 +221,7 @@
         <input type="text" id="modalCode" placeholder="安全密钥 securityJsCode">
         <div class="hint">也可以把密钥填入仓库的 <code>config.yaml</code> 后重新部署（公开仓库请谨慎，配置文件仍会被浏览器访问）。</div>
         <div class="actions">
+            <button id="modalSkipBtn" class="ghost">暂不配置，先浏览数据</button>
             <button id="modalSaveBtn">保存并开始使用</button>
         </div>
     </div>
@@ -230,6 +274,7 @@ function initKeys(cfgKey, cfgCode) {
 
     if (!AMAP_KEY || !AMAP_CODE || AMAP_KEY === PLACEHOLDER_KEY) {
         showKeyModal();
+        initDataOnly();   // 无密钥也可浏览排行榜与单站列表，地图区显示占位层
     } else {
         loadAMap();
     }
@@ -260,6 +305,19 @@ document.getElementById('modalSaveBtn').onclick = function () {
     var k = document.getElementById('modalKey').value.trim();
     var c = document.getElementById('modalCode').value.trim();
     if (saveKeys(k, c)) hideKeyModal();
+};
+
+document.getElementById('modalSkipBtn').onclick = function () { hideKeyModal(); };
+document.getElementById('goConfigBtn').onclick = showKeyModal;
+document.getElementById('panelGrabber').onclick = function () {
+    var p = document.getElementById('panel');
+    if (p.classList.contains('expanded')) {
+        p.classList.remove('expanded'); p.classList.add('collapsed');
+    } else if (p.classList.contains('collapsed')) {
+        p.classList.remove('collapsed');
+    } else {
+        p.classList.add('expanded');
+    }
 };
 
 function toast(msg, ms) {
@@ -297,7 +355,10 @@ function loadAMap() {
     _s.onload = function () {
         AMap.plugin(['AMap.MassMarks'], initApp);
     };
-    _s.onerror = function () { toast('高德 JSAPI 加载失败，请检查 Key 与安全密钥', 5000); };
+    _s.onerror = function () {
+        toast('高德 JSAPI 加载失败，请检查 Key 与安全密钥', 5000);
+        initDataOnly();
+    };
     document.head.appendChild(_s);
 }
 
@@ -320,11 +381,11 @@ var view = 'city';               // 'city' | 'origin'
 var originGroup = null;          // 单站视图的出发站
 var rankSortAsc = true;          // 排行榜 avg_minutes 排序方向
 
-/* 全城视图配色：≤40 绿、≤50 黄、≤60 橙、>60 红、无数据灰 */
+/* 全城视图配色：≤40 绿、≤50 黄、≤60 橙、>60 红、无数据灰（单位：分钟，见 renderLegend 标题） */
 var CITY_COLORS = ['#059669', '#d97706', '#ea580c', '#dc2626', '#9ca3af'];
 var CITY_LEGEND = [
-    ['#059669', '≤40 分钟'], ['#d97706', '≤50 分钟'], ['#ea580c', '≤60 分钟'],
-    ['#dc2626', '>60 分钟'], ['#9ca3af', '暂无数据']
+    ['#059669', '≤40'], ['#d97706', '≤50'], ['#ea580c', '≤60'],
+    ['#dc2626', '>60'], ['#9ca3af', '暂无数据']
 ];
 function cityColorIdx(mins) {
     if (mins == null || !isFinite(mins)) return 4;
@@ -334,11 +395,11 @@ function cityColorIdx(mins) {
     return 3;
 }
 
-/* 单站视图配色：≤15 深绿、≤30 绿、≤45 黄、≤60 橙、>60 红、无数据灰 */
+/* 单站视图配色：≤15 深绿、≤30 绿、≤45 黄、≤60 橙、>60 红、无数据灰（单位：分钟，见 renderLegend 标题） */
 var ORIGIN_COLORS = ['#047857', '#059669', '#d97706', '#ea580c', '#dc2626', '#9ca3af'];
 var ORIGIN_LEGEND = [
-    ['#047857', '≤15 分钟'], ['#059669', '≤30 分钟'], ['#d97706', '≤45 分钟'],
-    ['#ea580c', '≤60 分钟'], ['#dc2626', '>60 分钟'], ['#9ca3af', '不可达/无数据']
+    ['#047857', '≤15'], ['#059669', '≤30'], ['#d97706', '≤45'],
+    ['#ea580c', '≤60'], ['#dc2626', '>60'], ['#9ca3af', '不可达/无数据']
 ];
 function originColorIdx(mins) {
     if (mins == null || !isFinite(mins)) return 5;
@@ -350,15 +411,16 @@ function originColorIdx(mins) {
 }
 
 /* ============ 散点样式：canvas 生成彩色圆点 dataURL ============ */
+var DOT_SIZE = (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) ? 26 : 20;
 var dotURLCache = {};
 function dotURL(color) {
     if (dotURLCache[color]) return dotURLCache[color];
-    var size = 20;
+    var size = DOT_SIZE;
     var cv = document.createElement('canvas');
     cv.width = size; cv.height = size;
     var ctx = cv.getContext('2d');
     ctx.beginPath();
-    ctx.arc(size / 2, size / 2, 7, 0, Math.PI * 2);
+    ctx.arc(size / 2, size / 2, Math.round(size * 0.35), 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
     ctx.lineWidth = 2;
@@ -370,19 +432,37 @@ function dotURL(color) {
 
 function makeStyles(colors) {
     return colors.map(function (c) {
-        return { url: dotURL(c), anchor: new AMap.Pixel(10, 10), size: new AMap.Size(20, 20) };
+        return { url: dotURL(c), anchor: new AMap.Pixel(DOT_SIZE / 2, DOT_SIZE / 2), size: new AMap.Size(DOT_SIZE, DOT_SIZE) };
     });
 }
 
 /* ============ 初始化 ============ */
+/* 有密钥：地图 + 数据都初始化；无密钥：仅数据（排行榜/单站列表可浏览，地图区显示占位层） */
 function initApp() {
+    initAppMap();
+    initAppData();
+}
+
+function initDataOnly() {
+    showMapPlaceholder();
+    initAppData();
+}
+
+function initAppMap() {
     map = new AMap.Map('container', {
         center: MAP_CENTER,
         zoom: MAP_ZOOM,
         mapStyle: 'amap://styles/whitesmoke'
     });
     infoWindow = new AMap.InfoWindow({ offset: new AMap.Pixel(0, -12) });
+    // 数据先于地图就绪的兜底（如 JSAPI 加载慢于数据请求）
+    if (groups.length) { drawCityView(); fitGroups(); }
+}
 
+var dataInited = false;
+function initAppData() {
+    if (dataInited) return;   // 防重复绑定（如 JSAPI 加载失败后又重试）
+    dataInited = true;
     document.getElementById('citySelect').onchange = function () {
         if (this.value) selectCity(this.value);
     };
@@ -394,6 +474,10 @@ function initApp() {
     document.getElementById('backBtn').onclick = backToCityView;
 
     loadCityIndex();
+}
+
+function showMapPlaceholder() {
+    document.getElementById('mapPlaceholder').style.display = 'flex';
 }
 
 /* ============ 数据加载 ============ */
@@ -432,7 +516,7 @@ function selectCity(city) {
     groups = [];
     groupById = {};
     document.getElementById('rankBody').innerHTML = '';
-    document.getElementById('rankCount').textContent = '数据加载中…';
+    document.getElementById('rankCount').innerHTML = '<span class="spinner"></span> 数据加载中…';
     Promise.all([
         fetch('data/' + city + '/meta.json').then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }),
         fetch('data/' + city + '/stations.json').then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
@@ -477,7 +561,7 @@ function loadRows(gid) {
 
 /* ============ 地图视野 ============ */
 function fitGroups() {
-    if (!groups.length) return;
+    if (!map || !groups.length) return;
     var minLng = 180, minLat = 90, maxLng = -180, maxLat = -90;
     groups.forEach(function (g) {
         minLng = Math.min(minLng, g.lng); maxLng = Math.max(maxLng, g.lng);
@@ -486,8 +570,18 @@ function fitGroups() {
     map.setBounds(new AMap.Bounds([minLng, minLat], [maxLng, maxLat]), false);
 }
 
+/* setFitView 避让参数（顺序 [上,下,左,右]）：竖排（≤768px）面板在底部，避让下方；横排避让左侧面板 */
+function fitViewAvoid() {
+    if (window.innerWidth <= 768) {
+        var ph = document.getElementById('panel').offsetHeight || 0;
+        return [30, ph + 24, 30, 30];
+    }
+    return [40, 40, 400, 40];
+}
+
 /* ============ 图例 ============ */
 function renderLegend(title, items) {
+    if (!map) return;
     var html = '<div class="lg-title">' + escapeHtml(title) + '</div>';
     items.forEach(function (it) {
         html += '<div class="lg-item"><span class="lg-dot" style="background:' + escapeHtml(it[0]) + '"></span>' + escapeHtml(it[1]) + '</div>';
@@ -497,6 +591,7 @@ function renderLegend(title, items) {
 
 /* ============ 视图一：全城可达性 ============ */
 function drawCityView() {
+    if (!map) return;
     clearIsoOverlays();
     removeOriginMarker();
     var styles = makeStyles(CITY_COLORS);
@@ -504,10 +599,11 @@ function drawCityView() {
         return { lnglat: [g.lng, g.lat], style: cityColorIdx(g.avg_minutes), gid: g.id };
     });
     setMassMarks(styles, data);
-    renderLegend('全城平均通勤（分钟）', CITY_LEGEND);
+    renderLegend('全市平均通勤时间（分钟）', CITY_LEGEND);
 }
 
 function setMassMarks(styles, data) {
+    if (!map) return;
     if (massMarks) { massMarks.setMap(null); massMarks = null; }
     massMarks = new AMap.MassMarks(data, { zIndex: 110, style: styles, alwaysRender: true });
     massMarks.on('click', function (e) {
@@ -531,21 +627,25 @@ function setMassMarks(styles, data) {
 function showStationInfo(g) {
     var avg = (g.avg_minutes != null) ? (g.avg_minutes + ' 分钟') : '暂无数据';
     var rank = (g.rank != null) ? (' #' + g.rank) : '';
-    var mins;
+    var linkText = '查看单站视图 ›';
     if (view === 'origin' && originGroup && g.id !== originGroup.id) {
         var cached = rowsCache[currentCity + ':' + originGroup.id];
         var m = cached && cached.t ? cached.t[g.id] : null;
         if (m != null) avg = '自' + originGroup.name + '出发 ' + m + ' 分钟';
+        linkText = '改为从该站出发 ›';
     }
-    mins = '<div style="font-size:13px;padding:4px 6px;max-width:240px"><b>' + escapeHtml(g.name) + '</b>' + rank + '<br>' +
+    var mins = '<div style="font-size:13px;padding:4px 6px;max-width:240px"><b>' + escapeHtml(g.name) + '</b>' + rank + '<br>' +
         '🚇 ' + escapeHtml((g.lines || []).join(' / ')) + '<br>' +
         '平均通勤：' + escapeHtml(avg) + '<br>' +
-        '<span style="color:#6b7280;font-size:12px">点击站点查看单站出发视图</span></div>';
+        '<a href="javascript:void 0" id="infoGoOrigin" style="color:#2563eb;font-size:12px">' + linkText + '</a></div>';
     infoWindow.setContent(mins);
     infoWindow.open(map, [g.lng, g.lat]);
+    var link = document.getElementById('infoGoOrigin');
+    if (link) link.onclick = function () { enterOriginView(g); };
 }
 
 function highlightStation(g) {
+    if (!map) return;
     removeHighlight();
     highlightMarker = new AMap.Marker({
         map: map,
@@ -592,7 +692,7 @@ function renderRankTable() {
     body.innerHTML = '';
     var list = sortedFilteredGroups();
     document.getElementById('rankCount').textContent = groups.length ?
-        ('共 ' + groups.length + ' 站' + (list.length !== groups.length ? ('，匹配 ' + list.length + ' 站') : '') + '，点击行定位') : '';
+        ('共 ' + groups.length + ' 站' + (list.length !== groups.length ? ('，匹配 ' + list.length + ' 站') : '') + '，单击行定位，› 看单站视图') : '';
     document.getElementById('avgSortTh').textContent = '平均分钟 ' + (rankSortAsc ? '↑' : '↓');
     var shown = list.slice(0, RANK_LIMIT);
     document.getElementById('rankMore').textContent =
@@ -607,9 +707,13 @@ function renderRankTable() {
         tr.innerHTML = '<td>' + (g.rank != null ? g.rank : (i + 1)) + '</td>' +
             '<td><b>' + escapeHtml(g.name) + '</b></td>' +
             '<td><span class="badge ' + badgeCls + '">' + avgTxt + '</span></td>' +
-            '<td class="lines">' + escapeHtml((g.lines || []).join(' / ')) + '</td>';
+            '<td class="lines">' + escapeHtml((g.lines || []).join(' / ')) + '</td>' +
+            '<td><button class="row-go" title="查看单站视图">›</button></td>';
         tr.onclick = function () { highlightStation(g); };
-        tr.ondblclick = function () { enterOriginView(g); };
+        tr.querySelector('.row-go').onclick = function (e) {
+            e.stopPropagation();
+            enterOriginView(g);
+        };
         body.appendChild(tr);
     });
 }
@@ -619,13 +723,12 @@ function enterOriginView(g) {
     originGroup = g;
     view = 'origin';
     removeHighlight();
-    infoWindow.close();
+    if (infoWindow) infoWindow.close();
     document.getElementById('cityView').style.display = 'none';
     document.getElementById('originView').style.display = '';
     document.getElementById('originInfo').innerHTML = '出发站：<b>' + escapeHtml(g.name) + '</b>（' + escapeHtml((g.lines || []).join(' / ')) + '）';
     document.getElementById('originStats').innerHTML = '';
-    document.getElementById('destList').innerHTML = '<div class="hint">加载中…</div>';
-    toast('正在加载「' + g.name + '」的通勤矩阵…', 60000);
+    document.getElementById('destList').innerHTML = '<div class="hint"><span class="spinner"></span> 正在加载通勤矩阵…</div>';
     loadRows(g.id).then(function (data) {
         if (view !== 'origin' || !originGroup || originGroup.id !== g.id) return;  // 已切走
         toast('已加载「' + g.name + '」通勤数据');
@@ -643,7 +746,7 @@ function backToCityView(silent) {
     clearIsoOverlays();
     removeOriginMarker();
     removeHighlight();
-    infoWindow.close();
+    if (infoWindow) infoWindow.close();
     document.getElementById('originView').style.display = 'none';
     document.getElementById('cityView').style.display = '';
     if (!silent && groups.length) {
@@ -653,6 +756,7 @@ function backToCityView(silent) {
 }
 
 function drawOriginView(g, rowsData) {
+    if (!map) return;
     clearIsoOverlays();
     removeOriginMarker();
     var t = (rowsData && rowsData.t) || {};
@@ -708,9 +812,9 @@ function drawOriginView(g, rowsData) {
         isoOverlays.push(poly);
     });
 
-    renderLegend('自 ' + g.name + ' 出发（分钟）', ORIGIN_LEGEND);
+    renderLegend('从 ' + g.name + ' 出发（分钟）', ORIGIN_LEGEND);
     var fitTargets = isoOverlays.concat([originMarker]);
-    if (fitTargets.length) map.setFitView(fitTargets, false);
+    if (fitTargets.length) map.setFitView(fitTargets, false, fitViewAvoid());
 }
 
 function clearIsoOverlays() {
@@ -755,6 +859,7 @@ function renderOriginPanel(g, rowsData) {
         div.innerHTML = '<span class="label"><b>' + escapeHtml(gg.name) + '</b> <span style="font-size:11px;color:#6b7280">' + escapeHtml((gg.lines || []).join('/')) + '</span></span>' +
             '<span class="mins"><span class="badge ' + badgeCls + '">' + it.mins + ' 分钟</span></span>';
         div.onclick = function () {
+            if (!map) return;
             map.panTo([gg.lng, gg.lat]);
             if (map.getZoom() < 13) map.setZoom(13);
             showStationInfo(gg);
