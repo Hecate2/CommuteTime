@@ -684,7 +684,39 @@ function applyDeepLink() {
 }
 
 /* ============ 动态加载高德 JSAPI 2.0 ============ */
+/* 捕获高德 SDK 报出的 INVALID_USER_DOMAIN：当前页面 origin 不在该 Key 的
+ * 域名白名单内。SDK 以 console 报错形式输出（跨域脚本拿不到 error 事件），
+ * 故在此拦截 console，命中一次即说明原因并弹框引导填入正确密钥。 */
+var _domainErrShown = false;
+function watchInvalidDomain() {
+    if (watchInvalidDomain._on || typeof console === 'undefined') return;
+    watchInvalidDomain._on = true;
+    ['error', 'warn', 'log'].forEach(function (m) {
+        var orig = console[m] ? console[m].bind(console) : null;
+        console[m] = function () {
+            try {
+                var parts = Array.prototype.map.call(arguments, function (a) {
+                    if (typeof a === 'string') return a;
+                    try { return JSON.stringify(a); } catch (e) { return String(a); }
+                });
+                if (parts.join(' ').indexOf('INVALID_USER_DOMAIN') !== -1 && !_domainErrShown) {
+                    _domainErrShown = true;
+                    onInvalidDomain();
+                }
+            } catch (e) { /* ignore */ }
+            if (orig) orig.apply(null, arguments);
+        };
+    });
+}
+
+function onInvalidDomain() {
+    var origin = location.protocol + '//' + location.host;
+    toast('地图加载被拒绝（INVALID_USER_DOMAIN）：当前 Key 的域名白名单不含 ' + origin + '，请填入该域名可用的高德密钥', 9000);
+    try { showKeyModal(); } catch (e) { /* ignore */ }
+}
+
 function loadAMap() {
+    watchInvalidDomain();
     window._AMapSecurityConfig = { securityJsCode: AMAP_CODE };
     var _s = document.createElement('script');
     _s.src = 'https://webapi.amap.com/maps?v=2.0&key=' + encodeURIComponent(AMAP_KEY);
