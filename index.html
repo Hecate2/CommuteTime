@@ -80,6 +80,7 @@
     .intersect-bar label { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
     .circle-item input[type=checkbox] { width: auto; height: auto; margin: 0; }
     #intersectInfo { font-size: 12px; color: #6b7280; }
+    #diffInfo { font-size: 12px; color: #6b7280; }
     button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
         outline: 2px solid #2563eb; outline-offset: 1px;
     }
@@ -201,10 +202,12 @@
             <div id="circleList"></div>
             <div class="intersect-bar">
                 <label><input type="checkbox" id="onlyIntersect"> 只显示所选圈的交集</label>
+                <label><input type="checkbox" id="onlyDiff"> 只显示所选两圈的差集</label>
                 <button id="exportIntersectBtn" class="ghost" style="height:24px;font-size:12px">导出交集 GeoJSON</button>
                 <span id="intersectInfo"></span>
+                <span id="diffInfo"></span>
             </div>
-            <div class="hint">勾选=显示该圈，未勾选的圈会被隐藏，也不参与交集计算与导出；开启开关后地图仅显示所有勾选圈的公共交集（即同时被每个勾选圈包含的区域），列表也只保留交集内候选。</div>
+            <div class="hint">勾选=显示该圈，未勾选的圈会被隐藏，也不参与交集/差集计算与导出；交集开关显示所有勾选圈的公共部分（灰色），差集开关需刚好勾选2个圈、用各自颜色显示互不覆盖的部分，两开关可同时开，列表与批量计算跟随所显示区域。</div>
             <div class="row" style="margin-top:8px">
                 <select id="coord" style="flex:0 0 110px">
                     <option value="WGS84">WGS84</option>
@@ -675,7 +678,7 @@ function applyDeepLink() {
                     clearInterval(iv);
                     document.getElementById('onlyIntersect').checked = true;
                     intersectOnly = true;
-                    refreshIntersect();
+                    refreshRegions();
                 }
             }, 500);
         }
@@ -745,6 +748,11 @@ var infoWindow = null;
 var intersectOnly = false;
 var intersectOverlays = [];
 var intersectGeom = null;  // MultiPolygon coordinates in GCJ02
+/* 差集状态（要求刚好2个勾选圈；圈数不符时不渲染也不自动取消勾选） */
+var diffOnly = false;
+var diffOverlays = [];
+var diffGeomA = null;  // 圈A有、B无（A色显示）
+var diffGeomB = null;  // 圈B有、A无（B色显示）
 
 function companyList() {
     return Object.values(companies).sort(function (a, b) { return a.seq - b.seq; });
@@ -808,7 +816,12 @@ function initApp() {
     document.getElementById('exportIntersectBtn').onclick = exportIntersectGeoJSON;
     document.getElementById('onlyIntersect').onchange = function () {
         intersectOnly = this.checked;
-        refreshIntersect();
+        refreshRegions();
+        saveState();
+    };
+    document.getElementById('onlyDiff').onchange = function () {
+        diffOnly = this.checked;
+        refreshRegions();
         saveState();
     };
     document.getElementById('searchPoiBtn').onclick = searchCommunities;
@@ -1060,7 +1073,7 @@ function addPolygonOverlay(circle, rings) {
         zIndex: 50
     });
     polygon.setMap(map);
-    if (circle.visible === false || intersectOnly) polygon.hide();
+    if (circle.visible === false || regionsActive()) polygon.hide();
     circle.overlays.push(polygon);
 }
 
@@ -1105,12 +1118,12 @@ function renderCircleList() {
         dot.style.background = c.color;
         var check = document.createElement('input');
         check.type = 'checkbox';
-        check.title = '显示该等时圈（未勾选则隐藏，也不参与交集与导出）';
+        check.title = '显示该等时圈（未勾选则隐藏，也不参与交集/差集与导出）';
         check.checked = c.visible !== false;
         check.onchange = function () {
             c.visible = check.checked;
             div.style.opacity = c.visible ? '1' : '0.5';
-            refreshIntersect();
+            refreshRegions();
             saveState();
         };
         var delBtn = document.createElement('button');
@@ -1126,9 +1139,13 @@ function renderCircleList() {
     });
 }
 
+function regionsActive() {
+    // 任一独占显示生效（开关开且有结果）：原圈隐藏，只显示交集/差集层
+    return (intersectOnly && !!intersectGeom) || (diffOnly && !!(diffGeomA || diffGeomB));
+}
+
 function applyCircleVisibility(c) {
-    // 交集独占模式下原圈一律隐藏，由交集层显示
-    if (intersectOnly) {
+    if (regionsActive()) {
         c.overlays.forEach(function (o) { o.hide(); });
         return;
     }
@@ -1137,7 +1154,8 @@ function applyCircleVisibility(c) {
 
 function applyAllVisibility() {
     circles.forEach(applyCircleVisibility);
-    intersectOverlays.forEach(function (o) { intersectOnly ? o.show() : o.hide(); });
+    intersectOverlays.forEach(function (o) { (intersectOnly && intersectGeom) ? o.show() : o.hide(); });
+    diffOverlays.forEach(function (o) { (diffOnly && (diffGeomA || diffGeomB)) ? o.show() : o.hide(); });
 }
 
 function removeCircle(id) {
@@ -1262,9 +1280,9 @@ function circleAreaM2(c) {
 
 function fmtArea(m2) {
     if (m2 == null || !isFinite(m2) || m2 <= 0) return '';
-    if (m2 >= 1e6) return '约' + (m2 / 1e6).toFixed(1) + 'km²';
-    if (m2 >= 10000) return '约' + (m2 / 1e6).toFixed(2) + 'km²';
-    return '约' + Math.round(m2) + 'm²';
+    if (m2 >= 1e6) return (m2 / 1e6).toFixed(1) + 'km²';
+    if (m2 >= 10000) return (m2 / 1e6).toFixed(2) + 'km²';
+    return Math.round(m2) + 'm²';
 }
 
 function circleLabel(comp, mode, minutes, approx, precise, areaM2) {
@@ -1355,25 +1373,71 @@ function computeCheckedIntersection() {
     return { geom: acc, reason: null };
 }
 
-function refreshIntersect() {
+function clearDiffOverlays() {
+    diffOverlays.forEach(function (o) { o.setMap(null); });
+    diffOverlays = [];
+    diffGeomA = null;
+    diffGeomB = null;
+    document.getElementById('diffInfo').textContent = '';
+}
+
+// 计算刚好2个勾选圈的对称差集：a = A有B无（A色），b = B有A无（B色）。
+// 圈数不是2时返回 {reason:'need2'}（调用方只提示，不断开关勾选）。
+function computeCheckedDifference() {
+    var sels = checkedCircles();
+    if (sels.length !== 2) return { a: null, b: null, reason: 'need2', sels: sels };
+    if (typeof polygonClipping === 'undefined') return { a: null, b: null, reason: 'nolib', sels: sels };
+    var stats = { ringsIn: 0, ringsDropped: 0, polysDropped: 0, ptsDropped: 0 };
+    var A = cleanMP(toClosedMP(sels[0].polygons), stats);
+    var B = cleanMP(toClosedMP(sels[1].polygons), stats);
+    if (!A || !B) return { a: null, b: null, reason: 'empty', sels: sels };
+    var a = cleanMP(polygonClipping.difference(A, B), stats);
+    var b = cleanMP(polygonClipping.difference(B, A), stats);
+    if (stats.ringsDropped || stats.polysDropped || stats.ptsDropped) {
+        console.warn('[diff] sanitize dropped', stats, intersectStats(sels));
+    }
+    if (!a && !b) return { a: null, b: null, reason: 'empty', sels: sels };
+    return { a: a, b: b, reason: null, sels: sels };
+}
+
+function shortCircle(c) {
+    var nm = '';
+    try { nm = (companies[c.companyId] || {}).name || ''; } catch (e) { /* ignore */ }
+    if (nm.length > 6) nm = nm.slice(0, 6) + '…';
+    return nm + MODE_LABEL[c.mode] + c.minutes + '′';
+}
+
+// 统一刷新交集与差集显示：两开关可同时开（交集灰色、差集各自圈色，可拼出完整 Venn）。
+function refreshRegions() {
     clearIntersectOverlays();
-    if (!intersectOnly) {
+    clearDiffOverlays();
+    var needLib = (intersectOnly && checkedCircles().length) || (diffOnly && checkedCircles().length === 2);
+    if (needLib && typeof polygonClipping === 'undefined') {
+        toast('交集库加载失败，请检查网络后刷新（cdn.jsdelivr.net）');
+        if (intersectOnly) document.getElementById('intersectInfo').textContent = '交集库未加载';
+        if (diffOnly) document.getElementById('diffInfo').textContent = '交集库未加载';
         applyAllVisibility();
         renderPoiList();
         return;
     }
+    if (intersectOnly) {
+        refreshIntersectPart();
+    }
+    if (diffOnly) {
+        refreshDiffPart();
+    }
+    var shown = intersectOverlays.concat(diffOverlays);
+    if (shown.length && regionsActive()) {
+        try { map.setFitView(shown, false, fitAvoid()); } catch (e) { /* ignore */ }
+    }
+    applyAllVisibility();
+    renderPoiList();
+}
+
+function refreshIntersectPart() {
     var sels = checkedCircles();
     if (!sels.length) {
         document.getElementById('intersectInfo').textContent = '请勾选已加载的等时圈';
-        applyAllVisibility();
-        renderPoiList();
-        return;
-    }
-    if (typeof polygonClipping === 'undefined') {
-        toast('交集库加载失败，请检查网络后刷新（cdn.jsdelivr.net）');
-        document.getElementById('intersectInfo').textContent = '交集库未加载';
-        applyAllVisibility();
-        renderPoiList();
         return;
     }
     var res;
@@ -1382,15 +1446,11 @@ function refreshIntersect() {
     } catch (e) {
         console.error('[intersect] clip throw', e, intersectStats(sels));
         document.getElementById('intersectInfo').textContent = '交集计算失败：' + (e && e.message ? e.message : e);
-        applyAllVisibility();
-        renderPoiList();
         return;
     }
     if (!res.geom) {
         intersectGeom = null;
         document.getElementById('intersectInfo').textContent = '所选圈无交集';
-        applyAllVisibility();
-        renderPoiList();
         return;
     }
     intersectGeom = res.geom;
@@ -1412,14 +1472,63 @@ function refreshIntersect() {
         var infoArea = fmtArea(circleAreaM2({ polygons: intersectGeom, companyId: sels[0].companyId }));
         document.getElementById('intersectInfo').textContent =
             '交集：' + sels.length + ' 个圈，' + intersectGeom.length + ' 块多边形' + (infoArea ? '，' + infoArea : '');
-        map.setFitView(intersectOverlays, false, fitAvoid());
     } catch (e) {
         console.error('[intersect] render throw', e);
         clearIntersectOverlays();
         document.getElementById('intersectInfo').textContent = '交集绘制失败：' + (e && e.message ? e.message : e);
     }
-    applyAllVisibility();
-    renderPoiList();
+}
+
+function refreshDiffPart() {
+    var sels = checkedCircles();
+    if (sels.length !== 2) {
+        document.getElementById('diffInfo').textContent =
+            '差集需刚好勾选2个已加载的圈（当前' + sels.length + '个），开关已保留';
+        return;
+    }
+    var res;
+    try {
+        res = computeCheckedDifference();
+    } catch (e) {
+        console.error('[diff] clip throw', e, intersectStats(sels));
+        document.getElementById('diffInfo').textContent = '差集计算失败：' + (e && e.message ? e.message : e);
+        return;
+    }
+    if (!res.a && !res.b) {
+        document.getElementById('diffInfo').textContent = '两圈无差集区域（完全重合或数据异常）';
+        return;
+    }
+    diffGeomA = res.a;
+    diffGeomB = res.b;
+    try {
+        renderDiffSide(diffGeomA, res.sels[0].color);
+        renderDiffSide(diffGeomB, res.sels[1].color);
+        var aArea = fmtArea(circleAreaM2({ polygons: diffGeomA || [], companyId: res.sels[0].companyId }));
+        var bArea = fmtArea(circleAreaM2({ polygons: diffGeomB || [], companyId: res.sels[1].companyId }));
+        document.getElementById('diffInfo').innerHTML =
+            '差集：<br>' + escapeHtml(shortCircle(res.sels[0])) + '：' + (aArea || '0m²') +
+            '<br>' + escapeHtml(shortCircle(res.sels[1])) + '：' + (bArea || '0m²');
+    } catch (e) {
+        console.error('[diff] render throw', e);
+        clearDiffOverlays();
+        document.getElementById('diffInfo').textContent = '差集绘制失败：' + (e && e.message ? e.message : e);
+    }
+}
+
+function renderDiffSide(geom, color) {
+    (geom || []).forEach(function (poly) {
+        var p = new AMap.Polygon({
+            path: poly,
+            fillColor: color,
+            fillOpacity: 0.3,
+            strokeColor: color,
+            strokeOpacity: 1,
+            strokeWeight: 2,
+            zIndex: 79
+        });
+        p.setMap(map);
+        diffOverlays.push(p);
+    });
 }
 
 function exportIntersectGeoJSON() {
@@ -1466,7 +1575,7 @@ function afterCirclesChanged(notify) {
         }
     });
     refreshMembership();
-    refreshIntersect();
+    refreshRegions();
     if (notify && Object.keys(communities).length) {
         toast('等时圈已变更，圈内归属已重新计算，POI 检索结果已清除');
     }
@@ -1806,11 +1915,11 @@ function batchCommute() {
     if (batchRunning) { toast('批量计算正在进行，请稍候'); return; }
     var list = Object.values(communities);
     if (!list.length) { toast('请先检索或导入候选地点'); return; }
-    // 交集独占模式下只算交集内的候选（省配额，且与列表所见一致）；
+    // 交集/差集独占模式下只算显示区域内的候选（省配额，且与列表所见一致）；
     // 最长通勤筛选是结果过滤器，不作为计算范围（否则未计算项永远算不出来）
-    if (intersectOnly && intersectGeom) {
-        list = list.filter(function (item) { return isInIntersection(item.poi.location); });
-        if (!list.length) { toast('交集内暂无候选地点'); return; }
+    if (regionsActive()) {
+        list = list.filter(function (item) { return inShownRegion(item.poi.location); });
+        if (!list.length) { toast('所显示区域内暂无候选地点'); return; }
     }
     if (list.length > 80) { toast('候选过多，请先筛选（一次最多批量 80 个）'); list = list.slice(0, 80); }
     batchRunning = true;
@@ -1876,6 +1985,23 @@ function isInIntersection(lnglat) {
     return pointInMP(pt, intersectGeom);
 }
 
+function isInDiff(lnglat) {
+    if (!diffOnly || (!diffGeomA && !diffGeomB)) return true;
+    var pt = [lnglat.lng, lnglat.lat];
+    return (diffGeomA && pointInMP(pt, diffGeomA)) || (diffGeomB && pointInMP(pt, diffGeomB));
+}
+
+// 当前地图实际显示的区域：交集和差集取并（两开关可同时开拼出完整 Venn）
+function inShownRegion(lnglat) {
+    var useI = intersectOnly && !!intersectGeom;
+    var useD = diffOnly && !!(diffGeomA || diffGeomB);
+    if (!useI && !useD) return true;
+    var pt = [lnglat.lng, lnglat.lat];
+    if (useI && pointInMP(pt, intersectGeom)) return true;
+    if (useD && ((diffGeomA && pointInMP(pt, diffGeomA)) || (diffGeomB && pointInMP(pt, diffGeomB)))) return true;
+    return false;
+}
+
 function renderPoiRow(item) {
     var p = item.poi;
     var first = firstCompany();
@@ -1904,13 +2030,11 @@ function renderPoiRow(item) {
 }
 
 function visiblePoiList() {
-    // 当前列表实际显示的候选：交集过滤 + 最长通勤筛选 + 排序（导出与列表共用，所见即所得）
+    // 当前列表实际显示的候选：显示区域过滤 + 最长通勤筛选 + 排序（导出与列表共用，所见即所得）
     var list = Object.values(communities);
 
-    // 交集独占模式：只保留交集几何内的候选
-    if (intersectOnly && intersectGeom) {
-        list = list.filter(function (item) { return isInIntersection(item.poi.location); });
-    }
+    // 交集/差集独占显示：只保留当前显示区域内的候选
+    list = list.filter(function (item) { return inShownRegion(item.poi.location); });
 
     var filterVal = parseInt(document.getElementById('filterMax').value, 10);
     if (!isNaN(filterVal)) {
@@ -2044,6 +2168,7 @@ function saveState() {
             companySeq: companySeq,
             circleSeq: circleSeq,
             intersectOnly: intersectOnly,
+            diffOnly: diffOnly,
             companies: companyList().map(function (c) {
                 return { id: c.id, seq: c.seq, name: c.name, lng: c.lnglat.lng, lat: c.lnglat.lat, city: c.city || '' };
             }),
@@ -2060,10 +2185,14 @@ function restoreState() {
     if (!raw) { renderCompanySelects(); renderChips(); return; }
     try {
         var state = JSON.parse(raw);
-        // 交集开关先恢复：圈是异步加载的，每个圈加载完 afterCirclesChanged 都会重算交集
+        // 交集/差集开关先恢复：圈是异步加载的，每个圈加载完 afterCirclesChanged 都会重算
         if (state.intersectOnly) {
             intersectOnly = true;
             document.getElementById('onlyIntersect').checked = true;
+        }
+        if (state.diffOnly) {
+            diffOnly = true;
+            document.getElementById('onlyDiff').checked = true;
         }
         // 迁移老格式 {companies:{A:{...},B:{...}}, circles:[{companyId,mode,minutes}]}
         if (!state.v) {
