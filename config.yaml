@@ -10,6 +10,9 @@
 amap_key: "5de7e88ddd6394018ae67a6edd6d6b36"
 amap_code: "60bbb317a7bd772d25a8a35acc08f590"
 
+# Mapbox Token（仅驾车/骑行/步行(Mapbox)圈用，公开 pk token 即可，可留空改走页面弹窗/localStorage）
+mapbox_token: ""
+
 # 地图初始视角（GCJ-02 坐标，与高德地图一致）
 # 格式：经度,纬度
 map_center: "121.4997,31.2397"   # 上海陆家嘴

@@ -152,12 +152,13 @@
 
         <section>
             <details>
-                <summary>高德密钥设置</summary>
+                <summary>密钥设置</summary>
                 <div style="margin-top:6px">
-                    <input type="text" id="keyInput" placeholder="JS API Key（Web端开发者类型）">
-                    <input type="text" id="codeInput" placeholder="安全密钥 securityJsCode">
+                    <input type="text" id="keyInput" placeholder="高德JS API Key（Web端开发者类型）">
+                    <input type="text" id="codeInput" placeholder="高德安全密钥 securityJsCode">
+                    <input type="text" id="mapboxInput" placeholder="Mapbox Token（驾车/骑行/步行(Mapbox)圈）">
                     <button id="saveKeyBtn" class="ghost">保存并刷新</button>
-                    <div class="hint">申请：console.amap.com → 应用管理 → 创建 Key（服务平台选「Web端(JS API)」）。密钥保存在浏览器本地，不会上传服务器。</div>
+                    <div class="hint">申请：console.amap.com → 应用管理 → 创建 Key（服务平台选「Web端(JS API)」）。Mapbox Token 去 account.mapbox.com 申请（公开 pk token 即可）。密钥保存在浏览器本地，不会上传服务器。</div>
                 </div>
             </details>
         </section>
@@ -183,6 +184,9 @@
                     <option value="BUS">公交（真实路网）</option>
                     <option value="walk">步行</option>
                     <option value="ride">骑行</option>
+                    <option value="mapbox-driving">驾车(Mapbox)</option>
+                    <option value="mapbox-cycling">骑行(Mapbox)</option>
+                    <option value="mapbox-walking">步行(Mapbox)</option>
                 </select>
                 <input type="number" id="minutes" min="1" max="120" value="30" style="flex:0 0 64px">
             </div>
@@ -245,7 +249,7 @@
         </section>
 
         <footer>
-            说明：步行/骑行默认按可调速度画直线近似圈（默认步行 4.5km/h、骑行 9 km/h），勾选「精确路网圈」后改用真实路径逐方向二分（慢但准）；地铁/公交圈来自高德到达圈（不含等车与换乘耗时），以「真实通勤时间」为最终依据。候选地点来自高德 POI 或手动导入。配色：候选点按真实通勤时间 ≤30分钟 绿，≤45 黄，≤60 橙，&gt;60 红；等时圈边界按设定时长绘制（等时圈设定时长），两者口径不同。
+            说明：步行/骑行默认按可调速度画直线近似圈（默认步行 4.5km/h、骑行 9 km/h），勾选「精确路网圈」后改用真实路径逐方向二分（慢但准）；<b>驾车/骑行/步行(Mapbox)</b>调用 Mapbox 等时圈接口（需自备 Token，上限 60 分钟）；地铁/公交圈来自高德到达圈（不含等车与换乘耗时），以「真实通勤时间」为最终依据。候选地点来自高德 POI 或手动导入。配色：候选点按真实通勤时间 ≤30分钟 绿，≤45 黄，≤60 橙，&gt;60 红；等时圈边界按设定时长绘制（等时圈设定时长），两者口径不同。
         </footer>
     </aside>
     <div id="container"></div>
@@ -290,6 +294,7 @@ function parseYAML(text) {
 
 var AMAP_KEY = '';
 var AMAP_CODE = '';
+var MAPBOX_TOKEN = '';
 var PLACEHOLDER_KEY = 'YOUR_KEY_HERE';
 var MAP_CENTER = [121.4997, 31.2397];   // 默认上海陆家嘴（GCJ-02）
 var MAP_ZOOM = 12;
@@ -307,14 +312,16 @@ function parseMapView(centerStr, zoomStr) {
     }
 }
 
-function initKeys(cfgKey, cfgCode) {
+function initKeys(cfgKey, cfgCode, cfgMapbox) {
     var storedKey = localStorage.getItem('amap_key') || '';
     var storedCode = localStorage.getItem('amap_code') || '';
     AMAP_KEY = storedKey || cfgKey || '';
     AMAP_CODE = storedCode || cfgCode || '';
+    MAPBOX_TOKEN = localStorage.getItem('mapbox_token') || cfgMapbox || '';
 
     document.getElementById('keyInput').value = AMAP_KEY;
     document.getElementById('codeInput').value = AMAP_CODE;
+    document.getElementById('mapboxInput').value = MAPBOX_TOKEN;
 
     if (!AMAP_KEY || !AMAP_CODE || AMAP_KEY === PLACEHOLDER_KEY) {
         showKeyModal();
@@ -334,6 +341,9 @@ function saveKeys(k, c) {
 document.getElementById('saveKeyBtn').onclick = function () {
     var k = document.getElementById('keyInput').value.trim();
     var c = document.getElementById('codeInput').value.trim();
+    var m = document.getElementById('mapboxInput').value.trim();
+    if (m) localStorage.setItem('mapbox_token', m);
+    else localStorage.removeItem('mapbox_token');
     saveKeys(k, c);
 };
 
@@ -356,7 +366,7 @@ fetch('config.yaml')
     .then(function (text) {
         var cfg = parseYAML(text);
         parseMapView(cfg.map_center, cfg.map_zoom);
-        initKeys(cfg.amap_key, cfg.amap_code);
+        initKeys(cfg.amap_key, cfg.amap_code, cfg.mapbox_token);
     })
     .catch(function () {
         initKeys('', '');
@@ -742,7 +752,7 @@ var circles = [];                        // {id,companyId,label,mode,minutes,col
 var communities = {};                    // key -> {poi,marker,circleIds:Set,source,data:{},dom}
 var circleSeq = 0;
 var PALETTE = ['#2563eb', '#ea580c', '#059669', '#7c3aed', '#d97706', '#dc2626', '#0891b2', '#be185d'];
-var MODE_LABEL = { 'SUBWAY,BUS': '地铁+公交', 'SUBWAY': '地铁', 'BUS': '公交', 'walk': '步行', 'ride': '骑行' };
+var MODE_LABEL = { 'SUBWAY,BUS': '地铁+公交', 'SUBWAY': '地铁', 'BUS': '公交', 'walk': '步行', 'ride': '骑行', 'mapbox-driving': '驾车(Mapbox)', 'mapbox-cycling': '骑行(Mapbox)', 'mapbox-walking': '步行(Mapbox)' };
 var infoWindow = null;
 /* 交集状态 */
 var intersectOnly = false;
@@ -962,9 +972,11 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
     var comp = companies[companyId];
     if (!comp) { toast('起点不存在，请重新选择'); renderCompanySelects(); return; }
     var isTransit = (mode !== 'walk' && mode !== 'ride');
+    var isMapbox = mode.indexOf('mapbox-') === 0;
     var precise = !isTransit && document.getElementById('preciseChk').checked;
     if (!minutes || minutes < 1 || minutes > (isTransit ? 60 : 120)) {
-        toast(isTransit ? '地铁/公交圈时长需为 1-60 分钟' : '步行/骑行圈时长需为 1-120 分钟');
+        toast(isMapbox ? 'Mapbox 圈时长需为 1-60 分钟'
+            : (isTransit ? '地铁/公交圈时长需为 1-60 分钟' : '步行/骑行圈时长需为 1-120 分钟'));
         return;
     }
     var color = PALETTE[circleSeq % PALETTE.length];
@@ -1020,6 +1032,51 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
         refreshCircleLabel(circle);
         fitCircle(circle);
         afterCirclesChanged(false);
+    } else if (isMapbox) {
+        // Mapbox 等时圈：WGS84 请求，返回 GeoJSON（WGS84）再转回 GCJ02 显示
+        if (!MAPBOX_TOKEN) {
+            toast('请先在「高德密钥设置」里填写 Mapbox Token');
+            removeCircle(circle.id);
+            return;
+        }
+        (function (c, profile) {
+            toast('Mapbox 等时圈查询中…');
+            var wgs = gcj02towgs84(comp.lnglat.lng, comp.lnglat.lat);
+            var url = 'https://api.mapbox.com/isochrone/v1/mapbox/' + profile + '/' +
+                wgs[0] + ',' + wgs[1] + '?contours_minutes=' + minutes +
+                '&polygons=true&access_token=' + encodeURIComponent(MAPBOX_TOKEN);
+            fetch(url).then(function (r) {
+                if (!r.ok) throw new Error('http ' + r.status);
+                return r.json();
+            }).then(function (data) {
+                (data.features || []).forEach(function (f) {
+                    if (!f.geometry || !f.geometry.coordinates) return;
+                    // Polygon 即单个多边形，MultiPolygon 拆成多个，统一归一化入库
+                    var polys = (f.geometry.type === 'MultiPolygon') ? f.geometry.coordinates : [f.geometry.coordinates];
+                    polys.forEach(function (py) {
+                        var gcj = py.map(function (ring) {
+                            return ring.map(function (pt) { return wgs84togcj02(pt[0], pt[1]); });
+                        });
+                        var norm = normalizeBoundsPolygon(gcj);
+                        if (norm) {
+                            c.polygons.push(norm);
+                            addPolygonOverlay(c, norm);
+                        }
+                    });
+                });
+                if (!c.polygons.length) {
+                    toast('Mapbox 无返回数据（Token/配额/网络原因），可稍后重试');
+                    removeCircle(c.id);
+                    return;
+                }
+                refreshCircleLabel(c);
+                fitCircle(c);
+                afterCirclesChanged(false);
+            }).catch(function () {
+                toast('Mapbox 查询失败（Token/配额/网络原因），可稍后重试');
+                removeCircle(c.id);
+            });
+        })(circle, mode.slice(7));
     } else {
         toast('到达圈查询中…');
         amapRequest('到达圈', {
@@ -2254,6 +2311,18 @@ function gcj02towgs84(lng, lat) {
     dlat = (dlat * 180.0) / ((a * (1 - ee)) / (magic * sqrtmagic) * pi);
     dlng = (dlng * 180.0) / (a / sqrtmagic * Math.cos(radlat) * pi);
     return [lng - dlng, lat - dlat];
+}
+/* WGS84 → GCJ02 近似转换（Mapbox 返回 WGS84，需转回高德坐标系显示） */
+function wgs84togcj02(lng, lat) {
+    var pi = 3.1415926535897932384626, ee = 0.00669342162296594323, a = 6378245.0;
+    var dlat = transformlat(lng - 105.0, lat - 35.0);
+    var dlng = transformlng(lng - 105.0, lat - 35.0);
+    var radlat = lat / 180.0 * pi;
+    var magic = 1 - ee * Math.sin(radlat) * Math.sin(radlat);
+    var sqrtmagic = Math.sqrt(magic);
+    dlat = (dlat * 180.0) / ((a * (1 - ee)) / (magic * sqrtmagic) * pi);
+    dlng = (dlng * 180.0) / (a / sqrtmagic * Math.cos(radlat) * pi);
+    return [lng + dlng, lat + dlat];
 }
 function transformlat(lng, lat) {
     var pi = 3.1415926535897932384626;
