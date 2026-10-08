@@ -45,6 +45,17 @@
     .badge.g { background: #059669; } .badge.y { background: #d97706; }
     .badge.o { background: #ea580c; } .badge.r { background: #dc2626; }
     .badge.dg { background: #047857; }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 4px; }
+    .chip {
+        font-size: 11px; border-radius: 11px; padding: 2px 9px; cursor: pointer;
+        border: 1px solid #d1d5db; background: #fff; color: #6b7280;
+        user-select: none; height: auto; line-height: 1.5; margin: 0;
+    }
+    .chip.on { background: #2563eb; border-color: #2563eb; color: #fff; }
+    button.link-btn {
+        background: none; border: none; color: #2563eb; font-size: 11px;
+        padding: 0 2px; margin: 0; height: auto; cursor: pointer;
+    }
     #toast {
         position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
         background: rgba(17,24,39,.9); color: #fff; padding: 8px 18px; border-radius: 6px;
@@ -141,6 +152,7 @@
         button, input[type=text], select { height: 36px; }
         .rank-table th, .rank-table td { padding: 8px 6px; }
         .dest-item { padding: 8px 6px; min-height: 36px; }
+        .chip { padding: 5px 11px; }
         #legend { left: 10px; right: auto; bottom: 14px; font-size: 11px; padding: 6px 8px; }
     }
 </style>
@@ -172,7 +184,21 @@
 
             <section id="cityView">
                 <h2>全城可达性排行榜</h2>
-                <input type="text" id="searchInput" placeholder="搜索站名 / 线路过滤">
+                <div class="row">
+                    <input type="text" id="searchInput" placeholder="搜索站名 / 线路过滤">
+                    <select id="avgFilter" title="按全市平均通勤时间过滤" style="flex:0 0 118px">
+                        <option value="0">平均：不限</option>
+                        <option value="40">平均：≤40分</option>
+                        <option value="50">平均：≤50分</option>
+                        <option value="60">平均：≤60分</option>
+                    </select>
+                </div>
+                <div class="hint" style="margin:6px 0 2px">线路筛选（点选开关）：
+                    <button id="lineAllBtn" class="link-btn">全选</button>
+                    <button id="lineNoneBtn" class="link-btn">清空</button>
+                    <span id="lineChipCount"></span>
+                </div>
+                <div class="chip-row" id="lineChips"></div>
                 <div class="hint" id="rankCount"></div>
                 <table class="rank-table">
                     <thead>
@@ -380,6 +406,9 @@ var rowsCache = {};              // 'city:gid' -> {t:{destId:minutes}}（浏览�
 var view = 'city';               // 'city' | 'origin'
 var originGroup = null;          // 单站视图的出发站
 var rankSortAsc = true;          // 排行榜 avg_minutes 排序方向
+var avgFilterMax = 0;            // 0=不限；否则只显示 avg_minutes<=该值的站（无数据站同时隐藏）
+var lineFilterOn = {};           // 线路 label -> bool；站只要含一条选中线路即显示
+var allLineLabels = [];          // 当前城市全部线路（数字线路在前，已排序）
 
 /* 全城视图配色：≤40 绿、≤50 黄、≤60 橙、>60 红、无数据灰（单位：分钟，见 renderLegend 标题） */
 var CITY_COLORS = ['#059669', '#d97706', '#ea580c', '#dc2626', '#9ca3af'];
@@ -472,6 +501,12 @@ function initAppData() {
         renderRankTable();
     };
     document.getElementById('backBtn').onclick = backToCityView;
+    document.getElementById('avgFilter').onchange = function () {
+        avgFilterMax = parseInt(this.value, 10) || 0;
+        applyFilters();
+    };
+    document.getElementById('lineAllBtn').onclick = function () { setAllLines(true); };
+    document.getElementById('lineNoneBtn').onclick = function () { setAllLines(false); };
 
     loadCityIndex();
 }
@@ -525,6 +560,9 @@ function selectCity(city) {
         meta = res[0];
         groups = (res[1] && res[1].groups) || [];
         groups.forEach(function (g) { groupById[g.id] = g; });
+        avgFilterMax = 0;
+        document.getElementById('avgFilter').value = '0';
+        buildLineChips();
         renderFooter();
         renderRankTable();
         drawCityView();
@@ -562,8 +600,10 @@ function loadRows(gid) {
 /* ============ 地图视野 ============ */
 function fitGroups() {
     if (!map || !groups.length) return;
+    var vis = visibleGroups();
+    if (!vis.length) return;
     var minLng = 180, minLat = 90, maxLng = -180, maxLat = -90;
-    groups.forEach(function (g) {
+    vis.forEach(function (g) {
         minLng = Math.min(minLng, g.lng); maxLng = Math.max(maxLng, g.lng);
         minLat = Math.min(minLat, g.lat); maxLat = Math.max(maxLat, g.lat);
     });
@@ -595,7 +635,7 @@ function drawCityView() {
     clearIsoOverlays();
     removeOriginMarker();
     var styles = makeStyles(CITY_COLORS);
-    var data = groups.map(function (g) {
+    var data = visibleGroups().map(function (g) {
         return { lnglat: [g.lng, g.lat], style: cityColorIdx(g.avg_minutes), gid: g.id };
     });
     setMassMarks(styles, data);
@@ -667,12 +707,76 @@ function removeOriginMarker() {
     if (originMarker) { originMarker.setMap(null); originMarker = null; }
 }
 
-/* ============ 排行榜（搜索过滤 + 排序 + 前100截断） ============ */
+/* ============ 范围过滤：平均分钟阈值 + 线路多选 ============ */
+function lineLabelSortKey(label) {
+    var m = /^(\d+)/.exec(label);
+    return m ? parseInt(m[1], 10) : 1000;   // 纯文字线路排在数字线路之后
+}
+
+function buildLineChips() {
+    var set = {};
+    groups.forEach(function (g) {
+        (g.lines || []).forEach(function (l) { set[l] = 1; });
+    });
+    allLineLabels = Object.keys(set).sort(function (a, b) {
+        var ka = lineLabelSortKey(a), kb = lineLabelSortKey(b);
+        return ka === kb ? (a < b ? -1 : a > b ? 1 : 0) : ka - kb;
+    });
+    lineFilterOn = {};
+    allLineLabels.forEach(function (l) { lineFilterOn[l] = true; });
+    var box = document.getElementById('lineChips');
+    box.innerHTML = '';
+    allLineLabels.forEach(function (l) {
+        var chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'chip on';
+        chip.textContent = l;
+        chip.onclick = function () {
+            lineFilterOn[l] = !lineFilterOn[l];
+            chip.classList.toggle('on', lineFilterOn[l]);
+            updateLineChipCount();
+            applyFilters();
+        };
+        box.appendChild(chip);
+    });
+    updateLineChipCount();
+}
+
+function updateLineChipCount() {
+    var n = allLineLabels.filter(function (l) { return lineFilterOn[l]; }).length;
+    document.getElementById('lineChipCount').textContent = '（' + n + '/' + allLineLabels.length + '）';
+}
+
+function setAllLines(on) {
+    allLineLabels.forEach(function (l) { lineFilterOn[l] = on; });
+    var chips = document.getElementById('lineChips').children;
+    for (var i = 0; i < chips.length; i++) chips[i].classList.toggle('on', on);
+    updateLineChipCount();
+    applyFilters();
+}
+
+function isGroupVisible(g) {
+    if (avgFilterMax > 0 && (g.avg_minutes == null || g.avg_minutes > avgFilterMax)) return false;
+    var ls = g.lines || [];
+    for (var i = 0; i < ls.length; i++) { if (lineFilterOn[ls[i]]) return true; }
+    return false;
+}
+
+function visibleGroups() {
+    return groups.filter(isGroupVisible);
+}
+
+function applyFilters() {
+    renderRankTable();
+    if (view === 'city' && map && groups.length) { drawCityView(); fitGroups(); }
+}
+
+/* ============ 排行榜（范围过滤 + 搜索过滤 + 排序 + 前100截断） ============ */
 var RANK_LIMIT = 100;
 
 function sortedFilteredGroups() {
     var kw = document.getElementById('searchInput').value.trim().toLowerCase();
-    var list = groups;
+    var list = visibleGroups();
     if (kw) {
         list = list.filter(function (g) {
             return g.name.toLowerCase().indexOf(kw) >= 0 ||
@@ -691,8 +795,10 @@ function renderRankTable() {
     var body = document.getElementById('rankBody');
     body.innerHTML = '';
     var list = sortedFilteredGroups();
-    document.getElementById('rankCount').textContent = groups.length ?
-        ('共 ' + groups.length + ' 站' + (list.length !== groups.length ? ('，匹配 ' + list.length + ' 站') : '') + '，单击行定位，› 看单站视图') : '';
+    var base = visibleGroups().length;
+    document.getElementById('rankCount').textContent = base ?
+        ('共 ' + base + (base !== groups.length ? ' / ' + groups.length : '') + ' 站' +
+            (list.length !== base ? ('，匹配 ' + list.length + ' 站') : '') + '，单击行定位，› 看单站视图') : '';
     document.getElementById('avgSortTh').textContent = '平均分钟 ' + (rankSortAsc ? '↑' : '↓');
     var shown = list.slice(0, RANK_LIMIT);
     document.getElementById('rankMore').textContent =
@@ -761,10 +867,10 @@ function drawOriginView(g, rowsData) {
     removeOriginMarker();
     var t = (rowsData && rowsData.t) || {};
 
-    // 散点：其余站点按分钟上色（出发站单独用大 marker）
+    // 散点：其余站点按分钟上色（出发站单独用大 marker；尊重范围过滤）
     var styles = makeStyles(ORIGIN_COLORS);
     var data = [];
-    groups.forEach(function (gg) {
+    visibleGroups().forEach(function (gg) {
         if (gg.id === g.id) return;
         var m = t[gg.id];
         data.push({ lnglat: [gg.lng, gg.lat], style: originColorIdx(m != null ? m : null), gid: gg.id });
@@ -789,7 +895,7 @@ function drawOriginView(g, rowsData) {
     ];
     bands.forEach(function (b) {
         var pts = [[g.lng, g.lat]];   // 出发站自身计入该档
-        groups.forEach(function (gg) {
+        visibleGroups().forEach(function (gg) {
             if (gg.id === g.id) return;
             var m = t[gg.id];
             if (m != null && m <= b.th) pts.push([gg.lng, gg.lat]);
@@ -824,9 +930,9 @@ function clearIsoOverlays() {
 
 function renderOriginPanel(g, rowsData) {
     var t = (rowsData && rowsData.t) || {};
+    var pool = visibleGroups().filter(function (gg) { return gg.id !== g.id; });
     var list = [];
-    groups.forEach(function (gg) {
-        if (gg.id === g.id) return;
+    pool.forEach(function (gg) {
         var m = t[gg.id];
         if (m != null) list.push({ g: gg, mins: m });
     });
@@ -847,7 +953,7 @@ function renderOriginPanel(g, rowsData) {
         '<span class="stat-chip" style="background:#d97706">≤45分钟 ' + c45 + ' 站</span>' +
         '<span class="stat-chip" style="background:#ea580c">≤60分钟 ' + c60 + ' 站</span>';
     document.getElementById('destCount').textContent =
-        '可达 ' + list.length + ' / ' + (groups.length - 1) + ' 站，点击定位';
+        '可达 ' + list.length + ' / ' + pool.length + ' 站，点击定位';
 
     var box = document.getElementById('destList');
     box.innerHTML = '';
