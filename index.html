@@ -139,6 +139,7 @@
     }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/dist/polygon-clipping.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -209,6 +210,7 @@
                 <input type="number" id="batchMinutes" min="1" max="120" placeholder="分钟" style="flex:0 0 70px">
                 <button id="retimeBtn" class="ghost">选中圈改为该时长</button>
             </div>
+            <div class="hint" style="margin-top:4px">本地圈缓存：<span id="geomCacheInfo">…</span></div>
             <div class="intersect-bar">
                 <label><input type="checkbox" id="onlyIntersect"> 只显示所选圈的交集</label>
                 <label><input type="checkbox" id="onlyDiff"> 只显示所选两圈的差集</label>
@@ -851,6 +853,8 @@ function initApp() {
 
     document.getElementById('shareBtn').onclick = shareLink;
 
+    // 几何缓存先于恢复/深链接加载，使其重建时可直接命中
+    loadGeomCache();
     // 深链接（?point=lng,lat&run=1…）优先于本地保存的方案
     if (!applyDeepLink()) restoreState();
 }
@@ -966,6 +970,107 @@ function renderCompanySelects() {
     sortSel.value = hasPrev ? sortPrev : 'max';
 }
 
+/* ============ 等时圈几何缓存（lz-string 压缩存 localStorage） ============
+ * 结构 geomCache = { sig: { t: 存入毫秒时间戳, g: compressToUTF16(JSON) } }。
+ * sig = 方式|时长|起点经纬度|速度|精确标志，任一变化即 miss 重查，不会读到过期几何。
+ * 上限 80 条 LRU + 30 天 TTL；无库（typeof LZString === 'undefined'）时读写均为 no-op。
+ * 配额超限只 toast 警告一次/会话，不抛错、不影响主流程。 */
+var geomCache = {};
+var GEOM_CACHE_KEY = 'house_tool_circle_geom';
+var GEOM_CACHE_MAX = 80;
+var GEOM_CACHE_TTL = 30 * 24 * 3600 * 1000;
+var geomCacheWarned = false;
+
+function circleSig(companyId, mode, minutes, preciseFlag) {
+    var comp = companies[companyId];
+    if (!comp || !comp.lnglat) return null;
+    var parts = [mode, minutes, comp.lnglat.lng.toFixed(6), comp.lnglat.lat.toFixed(6)];
+    if (mode === 'walk' || mode === 'ride') {
+        parts.push((mode === 'walk') ? currentWalkSpeed() : currentRideSpeed());
+        parts.push(preciseFlag ? '1' : '0');
+    }
+    return parts.join('|');
+}
+
+function loadGeomCache() {
+    geomCache = {};
+    try {
+        var raw = localStorage.getItem(GEOM_CACHE_KEY);
+        if (!raw) { renderGeomCacheInfo(); return; }
+        var o = JSON.parse(raw);
+        var now = Date.now(), changed = false;
+        Object.keys(o).forEach(function (k) {
+            var e = o[k];
+            if (!e || !e.g || !e.t || (now - e.t) > GEOM_CACHE_TTL) { changed = true; return; }
+            geomCache[k] = e;
+        });
+        var keys = Object.keys(geomCache).sort(function (a, b) { return geomCache[a].t - geomCache[b].t; });
+        while (keys.length > GEOM_CACHE_MAX) { delete geomCache[keys.shift()]; changed = true; }
+        if (changed) persistGeomCache();
+    } catch (e) { geomCache = {}; }
+    renderGeomCacheInfo();
+}
+
+function persistGeomCache() {
+    try {
+        localStorage.setItem(GEOM_CACHE_KEY, JSON.stringify(geomCache));
+    } catch (e) {
+        if (!geomCacheWarned) {
+            geomCacheWarned = true;
+            toast('本地圈缓存已满，本次不再写入（不影响使用）', 4000);
+        }
+    }
+    renderGeomCacheInfo();
+}
+
+function storeGeom(sig, polygons) {
+    if (typeof LZString === 'undefined' || !sig || !polygons || !polygons.length) return;
+    try {
+        geomCache[sig] = { t: Date.now(), g: LZString.compressToUTF16(JSON.stringify(polygons)) };
+        var keys = Object.keys(geomCache).sort(function (a, b) { return geomCache[a].t - geomCache[b].t; });
+        while (keys.length > GEOM_CACHE_MAX) { delete geomCache[keys.shift()]; }
+        persistGeomCache();
+    } catch (e) {
+        if (!geomCacheWarned) {
+            geomCacheWarned = true;
+            toast('本地圈缓存写入失败（不影响使用）', 4000);
+        }
+    }
+}
+
+function fetchGeom(sig) {
+    if (typeof LZString === 'undefined' || !sig) return null;
+    var e = geomCache[sig];
+    if (!e || !e.g) return null;
+    if (Date.now() - e.t > GEOM_CACHE_TTL) { delete geomCache[sig]; persistGeomCache(); return null; }
+    try {
+        var s = LZString.decompressFromUTF16(e.g);
+        if (!s) return null;
+        var polys = JSON.parse(s);
+        if (!polys || !polys.length) return null;
+        return polys;
+    } catch (err) {
+        delete geomCache[sig];
+        persistGeomCache();
+        return null;
+    }
+}
+
+function fmtTime(ts) {
+    var d = new Date(ts);
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function renderGeomCacheInfo() {
+    var el = document.getElementById('geomCacheInfo');
+    if (!el) return;
+    var keys = Object.keys(geomCache);
+    if (!keys.length) { el.textContent = '本地圈缓存：无'; return; }
+    var oldest = keys.reduce(function (a, b) { return geomCache[a].t <= geomCache[b].t ? a : b; });
+    el.textContent = '本地圈缓存：共 ' + keys.length + ' 个，最旧存入 ' + fmtTime(geomCache[oldest].t);
+}
+
 /* ============ 等时圈 ============ */
 function onAddCircle() {
     var companyId = document.getElementById('circleCompany').value;
@@ -1030,6 +1135,19 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
     circles.push(circle);
     renderCircleList();
 
+    // 几何缓存命中则直接装配，跳过 API 查询（与各分支尾巴完全相同的收尾动作）
+    var geomSig = circleSig(companyId, mode, minutes, precise);
+    var hitPolys = fetchGeom(geomSig);
+    if (hitPolys) {
+        circle.polygons = hitPolys;
+        hitPolys.forEach(function (poly) { addPolygonOverlay(circle, poly); });
+        refreshCircleLabel(circle);
+        fitCircle(circle);
+        afterCirclesChanged(false);
+        if (!skipSave) saveState();
+        return;
+    }
+
     if (precise) {
         // 精确路网圈：真实步行/骑行路径逐方向二分边界（消耗配额，约 200 次调用）
         var ctrl = { aborted: false };
@@ -1052,6 +1170,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
             }
             circle.polygons = [[ring]];
             addPolygonOverlay(circle, [ring]);
+            storeGeom(geomSig, circle.polygons);
             refreshCircleLabel(circle);
             fitCircle(circle);
             afterCirclesChanged(false);
@@ -1069,6 +1188,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
         var ring = circleRing(comp.lnglat, radius, 72);
         circle.polygons = [[ring]];
         addPolygonOverlay(circle, [ring]);
+        storeGeom(geomSig, circle.polygons);
         refreshCircleLabel(circle);
         fitCircle(circle);
         afterCirclesChanged(false);
@@ -1109,6 +1229,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
                     removeCircle(c.id);
                     return;
                 }
+                storeGeom(geomSig, c.polygons);
                 refreshCircleLabel(c);
                 fitCircle(c);
                 afterCirclesChanged(false);
@@ -1150,6 +1271,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
                     removeCircle(circle.id);
                     return;
                 }
+                storeGeom(geomSig, circle.polygons);
                 refreshCircleLabel(circle);
                 fitCircle(circle);
                 afterCirclesChanged(false);

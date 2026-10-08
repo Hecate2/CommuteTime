@@ -10,6 +10,7 @@
 ## 代码约定
 
 - 单文件页面：HTML + 内联 CSS/JS，除高德 JS API 外**零第三方依赖**，不要引入框架/构建工具。
+  例外（仅 CDN script、无构建）：polygon-clipping（交差集几何裁剪）、lz-string（等时圈几何压缩缓存，`house_tool_circle_geom`，按签名 LRU/TTL，配额超限只 toast）。
 - JS 用 `var` + `function` 风格，与 `index.html` 一致；UI 文案为中文。
 - 密钥加载逻辑（`config.yaml` 解析 → localStorage → 弹窗兜底）在两个页面间保持一致的写法；`metro.html` 无密钥时可跳过弹窗纯数据浏览（地图区显示占位层，排行榜/单站列表可用），有密钥才初始化高德地图。
 - 提交信息用中文、带 `feat:`/`fix:` 等前缀，正文列要点。
