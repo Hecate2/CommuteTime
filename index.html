@@ -1254,10 +1254,10 @@ function intersectStats(sels) {
 }
 
 // 计算所有勾选圈的公共交集（同时被每个勾选圈包含的区域）。
-// 返回 {geom}；圈不足/无库返回 {reason}；裁剪抛错则直接 throw 由调用方展示。
+// 只勾选1个圈时交集即其自身。返回 {geom}；圈不足/无库返回 {reason}；裁剪抛错则直接 throw 由调用方展示。
 function computeCheckedIntersection() {
     var sels = checkedCircles();
-    if (sels.length < 2) return { geom: null, reason: 'need2' };
+    if (!sels.length) return { geom: null, reason: 'needSel' };
     if (typeof polygonClipping === 'undefined') return { geom: null, reason: 'nolib' };
     var stats = { ringsIn: 0, ringsDropped: 0, polysDropped: 0, ptsDropped: 0 };
     var acc = cleanMP(toClosedMP(sels[0].polygons), stats);
@@ -1281,8 +1281,8 @@ function refreshIntersect() {
         return;
     }
     var sels = checkedCircles();
-    if (sels.length < 2) {
-        document.getElementById('intersectInfo').textContent = '请至少勾选2个已加载的等时圈';
+    if (!sels.length) {
+        document.getElementById('intersectInfo').textContent = '请勾选已加载的等时圈';
         applyAllVisibility();
         renderPoiList();
         return;
@@ -1342,7 +1342,7 @@ function exportIntersectGeoJSON() {
     if (!intersectGeom || !intersectGeom.length) {
         // 若当前未开启交集模式，尝试即时计算一次以便导出
         var sels = checkedCircles();
-        if (sels.length < 2) { toast('请先勾选至少2个等时圈'); return; }
+        if (!sels.length) { toast('请先勾选等时圈'); return; }
         if (typeof polygonClipping === 'undefined') { toast('交集库未加载'); return; }
         try {
             var res = computeCheckedIntersection();
