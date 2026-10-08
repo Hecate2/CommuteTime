@@ -204,6 +204,11 @@
             </div>
             <div class="hint">「精确路网圈」沿 24 个方向用真实步行/骑行路径逐点二分边界（约 200 次调用、30~60 秒，更准）；不勾选则按上方速度画直线近似圈，秒出。</div>
             <div id="circleList"></div>
+            <div class="row" style="margin-top:6px">
+                <button id="selectAllBtn" class="ghost">全选 / 全不选</button>
+                <input type="number" id="batchMinutes" min="1" max="120" placeholder="分钟" style="flex:0 0 70px">
+                <button id="retimeBtn" class="ghost">选中圈改为该时长</button>
+            </div>
             <div class="intersect-bar">
                 <label><input type="checkbox" id="onlyIntersect"> 只显示所选圈的交集</label>
                 <label><input type="checkbox" id="onlyDiff"> 只显示所选两圈的差集</label>
@@ -822,6 +827,8 @@ function initApp() {
     map.getCity(function (info) { if (!cityName && info.city) cityName = info.city; });
 
     document.getElementById('addCircleBtn').onclick = onAddCircle;
+    document.getElementById('selectAllBtn').onclick = onSelectAll;
+    document.getElementById('retimeBtn').onclick = onRetimeSelected;
     document.getElementById('exportBtn').onclick = exportGeoJSON;
     document.getElementById('exportIntersectBtn').onclick = exportIntersectGeoJSON;
     document.getElementById('onlyIntersect').onchange = function () {
@@ -968,18 +975,51 @@ function onAddCircle() {
     addCircleFrom(companyId, mode, minutes);
 }
 
-function addCircleFrom(companyId, mode, minutes, skipSave) {
+function onSelectAll() {
+    if (!circles.length) { toast('暂无等时圈'); return; }
+    var allVisible = circles.every(function (c) { return c.visible !== false; });
+    circles.forEach(function (c) { c.visible = !allVisible; });
+    renderCircleList();
+    refreshRegions();
+    saveState();
+}
+
+// 把所有勾选的圈按原起点/方式/颜色重建成指定时长（精确圈保持精确）
+function onRetimeSelected() {
+    var m = parseInt(document.getElementById('batchMinutes').value, 10);
+    if (!m || m < 1 || m > 120) { toast('请输入 1-120 分钟'); return; }
+    var sels = circles.filter(function (c) { return c.visible !== false; });
+    if (!sels.length) { toast('请先勾选要修改的等时圈'); return; }
+    var overLimit = sels.some(function (c) { return c.mode !== 'walk' && c.mode !== 'ride' && m > 60; });
+    if (overLimit) { toast('地铁/公交/Mapbox 圈时长需 ≤60 分钟'); return; }
+    sels = sels.filter(function (c) { return c.minutes !== m; });
+    if (!sels.length) { toast('选中圈已经是 ' + m + ' 分钟'); return; }
+    toast('正在重建 ' + sels.length + ' 个圈为 ' + m + ' 分钟…', 4000);
+    var i = 0;
+    (function next() {
+        if (i >= sels.length) return;
+        // 精确圈构建耗时且独占按钮/进度条，等其完成再建下一个
+        if (document.getElementById('addCircleBtn').disabled) { setTimeout(next, 1000); return; }
+        var old = sels[i++];
+        var spec = { companyId: old.companyId, mode: old.mode, color: old.color, precise: old.precise };
+        removeCircle(old.id);
+        addCircleFrom(spec.companyId, spec.mode, m, false, { color: spec.color, precise: spec.precise });
+        setTimeout(next, 500);
+    })();
+}
+
+function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
     var comp = companies[companyId];
     if (!comp) { toast('起点不存在，请重新选择'); renderCompanySelects(); return; }
     var isTransit = (mode !== 'walk' && mode !== 'ride');
     var isMapbox = mode.indexOf('mapbox-') === 0;
-    var precise = !isTransit && document.getElementById('preciseChk').checked;
+    var precise = !isTransit && ((opts && opts.precise !== undefined) ? opts.precise : document.getElementById('preciseChk').checked);
     if (!minutes || minutes < 1 || minutes > (isTransit ? 60 : 120)) {
         toast(isMapbox ? 'Mapbox 圈时长需为 1-60 分钟'
             : (isTransit ? '地铁/公交圈时长需为 1-60 分钟' : '步行/骑行圈时长需为 1-120 分钟'));
         return;
     }
-    var color = PALETTE[circleSeq % PALETTE.length];
+    var color = (opts && opts.color) || PALETTE[circleSeq % PALETTE.length];
     var circle = {
         id: ++circleSeq,
         companyId: companyId,
