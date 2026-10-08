@@ -926,9 +926,9 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
     var circle = {
         id: ++circleSeq,
         companyId: companyId,
-        label: comp.name + ' · ' + MODE_LABEL[mode] + ' ' + minutes + ' 分钟' + (isTransit ? '' : (precise ? '(路网)' : '(近似)')),
+        label: circleLabel(comp, mode, minutes, !isTransit && !precise, precise, 0),
         mode: mode, minutes: minutes, color: color, approx: !isTransit && !precise, precise: precise,
-        polygons: [], overlays: [], visible: true
+        polygons: [], overlays: [], visible: true, areaM2: 0
     };
     circles.push(circle);
     renderCircleList();
@@ -955,6 +955,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
             }
             circle.polygons = [[ring]];
             addPolygonOverlay(circle, [ring]);
+            refreshCircleLabel(circle);
             fitCircle(circle);
             afterCirclesChanged(false);
         }
@@ -971,6 +972,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
         var ring = circleRing(comp.lnglat, radius, 72);
         circle.polygons = [[ring]];
         addPolygonOverlay(circle, [ring]);
+        refreshCircleLabel(circle);
         fitCircle(circle);
         afterCirclesChanged(false);
     } else {
@@ -1006,6 +1008,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
                     removeCircle(circle.id);
                     return;
                 }
+                refreshCircleLabel(circle);
                 fitCircle(circle);
                 afterCirclesChanged(false);
             }
@@ -1201,6 +1204,53 @@ function ringArea2(ring) {
     return s / 2;
 }
 
+// 经纬度环面积（平方米，本地平面近似）：|deg²| × 每度米数（经度按纬度收缩）
+function ringAreaM2(ring, latRef) {
+    var lat = (typeof latRef === 'number' && isFinite(latRef)) ? latRef
+        : ((ring.length && typeof ring[0][1] === 'number') ? ring[0][1] : 31);
+    return Math.abs(ringArea2(ring)) * 111320 * Math.cos(lat * Math.PI / 180) * 110540;
+}
+
+// 等时圈总面积 = 各块（外环减洞）之和；c 只需带 {polygons, companyId}
+function circleAreaM2(c) {
+    if (!c || !c.polygons || !c.polygons.length) return 0;
+    var latRef = null;
+    try {
+        var comp0 = companies[c.companyId];
+        if (comp0 && comp0.lnglat) latRef = comp0.lnglat.lat;
+    } catch (e) { /* ignore */ }
+    var total = 0;
+    c.polygons.forEach(function (poly) {
+        if (!poly || !poly.length) return;
+        total += ringAreaM2(poly[0], latRef);
+        for (var h = 1; h < poly.length; h++) total -= ringAreaM2(poly[h], latRef);
+    });
+    return Math.max(total, 0);
+}
+
+function fmtArea(m2) {
+    if (m2 == null || !isFinite(m2) || m2 <= 0) return '';
+    if (m2 >= 1e6) return '约' + (m2 / 1e6).toFixed(1) + 'km²';
+    if (m2 >= 10000) return '约' + (m2 / 1e6).toFixed(2) + 'km²';
+    return '约' + Math.round(m2) + 'm²';
+}
+
+function circleLabel(comp, mode, minutes, approx, precise, areaM2) {
+    var s = comp.name + ' · ' + MODE_LABEL[mode] + ' ' + minutes + ' 分钟' + (approx ? '(近似)' : (precise ? '(路网)' : ''));
+    var a = fmtArea(areaM2);
+    if (a) s += ' · ' + a;
+    return s;
+}
+
+// 几何落定后刷新标签（含面积）并重绘列表
+function refreshCircleLabel(c) {
+    var comp = companies[c.companyId];
+    if (!comp) return;
+    c.areaM2 = circleAreaM2(c);
+    c.label = circleLabel(comp, c.mode, c.minutes, c.approx, c.precise, c.areaM2);
+    renderCircleList();
+}
+
 // 严格数值坐标：裁剪库 RingIn 对每个坐标做 typeof==="number" 强校验，
 // 而 isFinite("121.5")===true 会让数值字符串混过宽松检查、然后在库里抛错。
 // 这里统一转成有限 number，不合法的点返回 null（由调用方剔除）。
@@ -1327,7 +1377,9 @@ function refreshIntersect() {
             p.setMap(map);
             intersectOverlays.push(p);
         });
-        document.getElementById('intersectInfo').textContent = '交集：' + sels.length + ' 个圈，' + intersectGeom.length + ' 块多边形';
+        var infoArea = fmtArea(circleAreaM2({ polygons: intersectGeom, companyId: sels[0].companyId }));
+        document.getElementById('intersectInfo').textContent =
+            '交集：' + sels.length + ' 个圈，' + intersectGeom.length + ' 块多边形' + (infoArea ? '，' + infoArea : '');
         map.setFitView(intersectOverlays, false, fitAvoid());
     } catch (e) {
         console.error('[intersect] render throw', e);
@@ -1361,11 +1413,12 @@ function exportIntersectGeoJSON() {
         });
     });
     var sels2 = checkedCircles();
+    var interArea = (sels2.length && intersectGeom) ? circleAreaM2({ polygons: intersectGeom, companyId: sels2[0].companyId }) : 0;
     downloadFile(JSON.stringify({
         type: 'FeatureCollection',
         features: [{
             type: 'Feature',
-            properties: { circles: sels2.map(function (c) { return c.label; }) },
+            properties: { circles: sels2.map(function (c) { return c.label; }), area_m2: Math.round(interArea) },
             geometry: { type: 'MultiPolygon', coordinates: coords }
         }]
     }), '等时圈交集.geojson', 'application/geo+json');
@@ -1896,6 +1949,7 @@ function exportGeoJSON() {
             properties: {
                 company: c.companyId,
                 mode: c.mode, minutes: c.minutes, approx: c.approx,
+                area_m2: Math.round(c.areaM2 != null ? c.areaM2 : circleAreaM2(c)),
                 center: comp ? [comp.lnglat.lng, comp.lnglat.lat] : null,
                 center_name: comp ? comp.name : null
             },
