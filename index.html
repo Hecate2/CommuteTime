@@ -2383,12 +2383,6 @@ function pointInMP(pt, mp) {
     return false;
 }
 
-function isInIntersection(lnglat) {
-    if (!intersectOnly || !intersectGeom) return true;
-    var pt = [lnglat.lng, lnglat.lat];
-    return pointInMP(pt, intersectGeom);
-}
-
 function isInDiff(lnglat) {
     if (!diffOnly || (!diffGeomA && !diffGeomB)) return true;
     var pt = [lnglat.lng, lnglat.lat];
