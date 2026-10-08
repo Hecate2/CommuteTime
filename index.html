@@ -39,9 +39,10 @@
         display: flex; align-items: center; gap: 6px; border-radius: 6px;
         padding: 5px 10px; font-size: 13px; margin-top: 4px;
     }
-    .chip.A { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
-    .chip.B { background: #fdf2f8; border: 1px solid #fbcfe8; color: #9d174d; }
-    .chip .x { margin-left: auto; cursor: pointer; color: #9ca3af; }
+    .chip .x {
+        margin: 0 0 0 auto; padding: 0 2px; background: none; border: none;
+        color: #9ca3af; font-size: 13px; height: auto; cursor: pointer; line-height: 1.4;
+    }
     .chip .coord { font-size: 11px; color: #6b7280; }
     .circle-item {
         display: flex; align-items: center; gap: 6px; font-size: 13px;
@@ -80,7 +81,8 @@
     .intersect-bar label { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
     .circle-item input[type=checkbox] { width: auto; height: auto; margin: 0; }
     #intersectInfo { font-size: 12px; color: #6b7280; }
-    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+    textarea:focus-visible, .poi-item:focus-visible {
         outline: 2px solid #2563eb; outline-offset: 1px;
     }
     .h1-link { font-size: 12px; font-weight: normal; color: #9ca3af; text-decoration: none; margin-left: 8px; white-space: nowrap; }
@@ -90,15 +92,23 @@
         border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 10px;
         font-size: 12px; color: #1e40af; line-height: 1.7; margin-bottom: 10px;
     }
-    #guideBar .x { margin-left: auto; cursor: pointer; color: #60a5fa; font-size: 14px; padding: 0 4px; flex-shrink: 0; }
+    #guideBar .x {
+        margin: 0 0 0 auto; padding: 0 4px; background: none; border: none; height: auto;
+        cursor: pointer; color: #60a5fa; font-size: 14px; line-height: 1.7; flex-shrink: 0;
+    }
     #panelGrab {
         display: none; width: 100%; background: none; border: none; color: #9ca3af;
         font-size: 12px; height: 26px; margin: 0 0 2px; padding: 0; cursor: pointer;
+        touch-action: none;
+    }
+    #panelSummary {
+        display: none; font-size: 12px; color: #6b7280; line-height: 1.6;
+        padding: 0 4px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .min-chip { height: 24px; padding: 0 9px; font-size: 12px; margin: 2px 4px 2px 0; }
     .retry-btn { height: 22px; font-size: 11px; padding: 0 8px; margin: 4px 0 0; }
     #progBar {
-        position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+        position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
         z-index: 998; display: none; align-items: center; gap: 10px;
         background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
         box-shadow: 0 4px 16px rgba(0,0,0,.14); padding: 8px 12px;
@@ -125,15 +135,19 @@
     @media (max-width: 768px) {
         #app { flex-direction: column-reverse; }
         #container { height: auto; flex: 1; }
-        #panel { width: 100%; height: 46%; border-right: none; border-top: 1px solid #e5e7eb; }
+        #panel { width: 100%; height: 46%; border-right: none; border-top: 1px solid #e5e7eb; transition: height .18s ease; }
         #panel.h-full { height: 85%; }
         #panel.h-min { height: 92px; }
+        #panel.h-min #panelSummary { display: block; }
         #panelGrab { display: block; height: 32px; }
         button, input[type=text], input[type=number], select { height: 40px; }
+        textarea { min-height: 40px; }
+        #panel input[type=checkbox] { width: 22px !important; height: 22px !important; }
         .circle-item button, #progBar button, .retry-btn, .min-chip { height: 32px; }
         .min-chip { padding: 0 12px; font-size: 13px; }
         .chip { padding: 8px 12px; }
-        .chip .x { padding: 2px 8px; }
+        .chip .x { padding: 0 8px; min-width: 32px; height: 32px; font-size: 16px; }
+        #guideBar .x { min-width: 32px; height: 32px; }
         #progBar .track { width: 100px; }
     }
 </style>
@@ -143,10 +157,11 @@
 <div id="app">
     <aside id="panel">
         <button id="panelGrab" type="button">▲ 展开面板</button>
+        <div id="panelSummary" aria-live="polite"></div>
         <h1>⏱️ 等时圈通勤工具 <a class="h1-link" href="metro.html" title="查看各城市地铁站可达性排行">→ 地铁可达性</a></h1>
         <div id="guideBar">
             <span>使用步骤：<b>① 设起点</b>（搜索或点图新建）→ <b>② 画等时圈</b>（可选精确路网圈）→ <b>③ 检索候选地点并批量算通勤</b></span>
-            <span class="x" id="guideClose" title="关闭，不再显示">✕</span>
+            <button type="button" class="x" id="guideClose" title="关闭，不再显示" aria-label="关闭引导">✕</button>
         </div>
 
         <section>
@@ -164,7 +179,7 @@
         <section>
             <h2>① 起点位置（可添加任意多个，搜索/点图即新建）</h2>
             <input type="text" id="companyInput" placeholder="输入地点名 / 地址搜索新建，或直接点击地图新建">
-            <div class="hint">每次在地图上点击或搜索选中都会自动创建一个新的出发地点。</div>
+            <div class="hint">每次搜索选中，或点击地图后确认「设为起点」，都会创建一个新的出发地点。</div>
             <div id="chipBox"></div>
             <div class="row" style="margin-top:6px">
                 <button id="shareBtn" class="ghost" title="复制链接：保存起点、等时圈设置与交集开关（不含密钥）">🔗 分享</button>
@@ -254,9 +269,9 @@
     <button type="button" class="ghost">取消</button>
 </div>
 
-<div id="keyModal">
+<div id="keyModal" role="dialog" aria-modal="true" aria-labelledby="keyModalTitle">
     <div class="modal-box">
-        <h3>欢迎使用等时圈通勤工具</h3>
+        <h3 id="keyModalTitle">欢迎使用等时圈通勤工具</h3>
         <p>本工具使用高德地图服务，需要你在本地配置高德 JS API Key 与安全密钥。密钥仅保存在浏览器 localStorage 中，不会上传到任何服务器。</p>
         <p class="hint">如果你还没有密钥，可前往 <a href="https://console.amap.com" target="_blank">console.amap.com</a> 免费申请：应用管理 → 创建 Key → 服务平台选「Web端(JS API)」。</p>
         <input type="text" id="modalKey" placeholder="JS API Key">
@@ -336,10 +351,26 @@ document.getElementById('saveKeyBtn').onclick = function () {
 
 function showKeyModal() {
     document.getElementById('keyModal').classList.add('show');
+    setTimeout(function () { document.getElementById('modalKey').focus(); }, 0);
 }
 function hideKeyModal() {
     document.getElementById('keyModal').classList.remove('show');
 }
+
+/* 弹窗键盘交互：Esc 仅在已有可用密钥时可关（首次无密钥强制配置时 Esc 无效）；Tab 焦点在弹窗内循环 */
+document.getElementById('keyModal').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' || e.key === 'Esc') {
+        if (AMAP_KEY && AMAP_CODE && AMAP_KEY !== PLACEHOLDER_KEY) hideKeyModal();
+        e.preventDefault();
+        return;
+    }
+    if (e.key !== 'Tab') return;
+    var focusables = this.querySelectorAll('.modal-box input, .modal-box button, .modal-box a[href]');
+    if (!focusables.length) return;
+    var first = focusables[0], last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
 
 document.getElementById('modalSaveBtn').onclick = function () {
     var k = document.getElementById('modalKey').value.trim();
@@ -404,19 +435,65 @@ document.querySelector('#progBar button').onclick = function () {
     };
 })();
 
-/* 移动端面板抽屉：46% → 85% → 收起 循环切换（桌面端按钮隐藏） */
-document.getElementById('panelGrab').onclick = function () {
+/* 移动端面板抽屉：点击循环 46% → 85% → 收起；支持 touch 拖拽实时调高、松手吸附最近档位（桌面端按钮隐藏） */
+(function initPanelDrawer() {
+    var grab = document.getElementById('panelGrab');
     var panel = document.getElementById('panel');
     var states = ['', 'h-full', 'h-min'];
     var labels = ['▲ 展开面板', '▼ 收起面板', '▲ 恢复面板'];
-    var cur = this._cur || 0;
-    if (states[cur]) panel.classList.remove(states[cur]);
-    cur = (cur + 1) % states.length;
-    if (states[cur]) panel.classList.add(states[cur]);
-    this._cur = cur;
-    this.textContent = labels[cur];
-    if (typeof map !== 'undefined' && map) map.resize();
-};
+    var cur = 0;
+    grab.addEventListener('click', function () {
+        if (grab._dragged) { grab._dragged = false; return; }   // 拖拽结束的抬手 click 不再切档
+        if (states[cur]) panel.classList.remove(states[cur]);
+        cur = (cur + 1) % states.length;
+        if (states[cur]) panel.classList.add(states[cur]);
+        grab.textContent = labels[cur];
+        if (typeof map !== 'undefined' && map) map.resize();
+    });
+    var startY = 0, startH = 0, dragging = false;
+    grab.addEventListener('touchstart', function (e) {
+        if (window.innerWidth > 768) return;
+        startY = e.touches[0].clientY;
+        startH = panel.offsetHeight;
+        dragging = true;
+        grab._dragged = false;
+        panel.style.transition = 'none';   // 拖拽跟手期间禁掉高度过渡
+    }, { passive: true });
+    grab.addEventListener('touchmove', function (e) {
+        if (!dragging) return;
+        var dy = startY - e.touches[0].clientY;   // 手指上推 = 面板变高
+        if (!grab._dragged && Math.abs(dy) < 8) return;   // 位移 <8px 视为点击
+        grab._dragged = true;
+        var vh = window.innerHeight;
+        var h = Math.min(vh * 0.85, Math.max(92, startH + dy));
+        panel.classList.remove('h-full');
+        panel.classList.remove('h-min');
+        panel.style.height = h + 'px';
+        e.preventDefault();
+    }, { passive: false });
+    grab.addEventListener('touchend', function () {
+        if (!dragging) return;
+        dragging = false;
+        panel.style.transition = '';
+        if (!grab._dragged) return;   // 视为点击，交给 click 循环切档
+        var vh = window.innerHeight;
+        var h = panel.offsetHeight;
+        var snaps = [92, vh * 0.46, vh * 0.85];   // 对应档位 h-min / 默认 46% / h-full
+        var stateIdx = [2, 0, 1];
+        var best = 0;
+        for (var i = 1; i < snaps.length; i++) {
+            if (Math.abs(h - snaps[i]) < Math.abs(h - snaps[best])) best = i;
+        }
+        if (states[cur]) panel.classList.remove(states[cur]);
+        cur = stateIdx[best];
+        if (states[cur]) panel.classList.add(states[cur]);
+        grab.textContent = labels[cur];
+        panel.style.height = h + 'px';   // 从拖拽高度过渡到吸附档位
+        void panel.offsetHeight;
+        panel.style.height = '';
+        if (typeof map !== 'undefined' && map) map.resize();
+    });
+})();
 
 /* 时长快捷 chips：公交 15/30/45/60，步行/骑行 15/30/45/60/90；点击填入输入框，仍可手输 */
 function renderMinChips() {
@@ -714,6 +791,30 @@ var intersectOnly = false;
 var intersectOverlays = [];
 var intersectGeom = null;  // MultiPolygon coordinates in GCJ02
 
+/* 前置条件禁用态与移动端抽屉摘要：候选数/圈数/起点数变化时统一刷新 */
+var batchRunning = false;
+var batchCtrl = null;
+var searchRunning = false;
+
+function updatePanelSummary() {
+    var el = document.getElementById('panelSummary');
+    if (!el) return;
+    el.textContent = '起点 ' + companyList().length + ' 个 · 等时圈 ' + circles.length + ' 个 · 候选 ' + Object.keys(communities).length + ' 个';
+}
+
+function updateActionStates() {
+    var count = Object.keys(communities).length;
+    var batchBtn = document.getElementById('batchBtn');
+    batchBtn.disabled = !count || batchRunning;
+    batchBtn.title = count ? '' : '请先检索或导入候选地点';
+    var searchBtn = document.getElementById('searchPoiBtn');
+    var hasLoaded = circles.some(function (c) { return c.visible !== false && c.polygons && c.polygons.length; });
+    searchBtn.disabled = !hasLoaded || searchRunning;
+    searchBtn.title = hasLoaded ? '' : '请先添加至少一个等时圈';
+    updatePanelSummary();
+}
+updateActionStates();
+
 function companyList() {
     return Object.values(companies).sort(function (a, b) { return a.seq - b.seq; });
 }
@@ -736,14 +837,55 @@ function isLegacyMapClickName(name) {
     return typeof name === 'string' && name.indexOf('地图选点') === 0;
 }
 
+/* 点图建起点两段式确认：单击弹确认层，「设为起点」才真正建点；5 秒无操作或点击地图他处自动关闭 */
+var originConfirm = { iw: null, timer: null };
+function closeOriginConfirm() {
+    clearTimeout(originConfirm.timer);
+    if (originConfirm.iw) originConfirm.iw.close();
+}
+function promptAddOrigin(lnglat) {
+    closeOriginConfirm();
+    var box = document.createElement('div');
+    box.style.cssText = 'font-size:13px;padding:2px 4px';
+    var tip = document.createElement('div');
+    tip.textContent = '在此设置起点？';
+    var row = document.createElement('div');
+    row.style.cssText = 'margin-top:8px;text-align:right';
+    var okBtn = document.createElement('button');
+    okBtn.type = 'button';
+    okBtn.textContent = '设为起点';
+    okBtn.style.margin = '0';
+    var noBtn = document.createElement('button');
+    noBtn.type = 'button';
+    noBtn.className = 'ghost';
+    noBtn.textContent = '取消';
+    noBtn.style.margin = '0 0 0 6px';
+    okBtn.onclick = function () {
+        closeOriginConfirm();
+        addCompany(lnglat, nextDefaultOriginName());
+    };
+    noBtn.onclick = function () { closeOriginConfirm(); };
+    row.appendChild(okBtn);
+    row.appendChild(noBtn);
+    box.appendChild(tip);
+    box.appendChild(row);
+    if (!originConfirm.iw) {
+        originConfirm.iw = new AMap.InfoWindow({ offset: new AMap.Pixel(0, 0), closeWhenClickMap: true });
+    }
+    originConfirm.iw.setContent(box);
+    originConfirm.iw.open(map, lnglat);
+    originConfirm.timer = setTimeout(closeOriginConfirm, 5000);
+}
+
 function initApp() {
     map = new AMap.Map('container', {
         center: MAP_CENTER,
         zoom: MAP_ZOOM,
         mapStyle: 'amap://styles/whitesmoke'
     });
+    // 两段式建点：单击先弹确认层，避免拖拽/误触直接建起点
     map.on('click', function (e) {
-        addCompany(e.lnglat, nextDefaultOriginName());
+        promptAddOrigin(e.lnglat);
     });
 
     var autoComplete = new AMap.AutoComplete({ input: 'companyInput' });
@@ -833,6 +975,9 @@ function addCompany(lnglat, name, skipSave, keepId) {
 function removeCompany(id) {
     var c = companies[id];
     if (!c) return;
+    // 级联删除该起点全部等时圈，先确认
+    var cascade = circles.filter(function (x) { return x.companyId === id; }).length;
+    if (cascade > 0 && !confirm('删除起点「' + c.name + '」将同时删除其 ' + cascade + ' 个等时圈，确定？')) return;
     if (c.marker) c.marker.setMap(null);
     delete companies[id];
     circles.filter(function (x) { return x.companyId === id; }).forEach(function (x) {
@@ -860,13 +1005,15 @@ function renderChips() {
             ? ' <span class="coord">' + Number(c.lnglat.lng).toFixed(4) + ', ' + Number(c.lnglat.lat).toFixed(4) + '</span>'
             : '';
         div.innerHTML = '<span class="dot" style="background:' + chipColors[idx % chipColors.length] + '"></span>' +
-            '<span>📍 <b>' + escapeHtml(c.name) + '</b>' + coord + '</span><span class="x">✕</span>';
+            '<span>📍 <b>' + escapeHtml(c.name) + '</b>' + coord + '</span>' +
+            '<button type="button" class="x" aria-label="删除起点 ' + escapeHtml(c.name) + '">✕</button>';
         div.querySelector('.x').onclick = function () { removeCompany(c.id); };
         box.appendChild(div);
     });
     if (!list.length) {
-        box.innerHTML = '<div class="hint">尚未设置起点位置，点击地图或搜索即新建</div>';
+        box.innerHTML = '<div class="hint">尚未设置起点位置，搜索或点击地图确认后新建</div>';
     }
+    updateActionStates();
 }
 
 function renderCompanySelects() {
@@ -1079,9 +1226,15 @@ function renderCircleList() {
             saveState();
         };
         var delBtn = document.createElement('button');
+        delBtn.type = 'button';
         delBtn.className = 'warn';
         delBtn.textContent = '删';
-        delBtn.onclick = function () { removeCircle(c.id); saveState(); };
+        delBtn.setAttribute('aria-label', '删除等时圈 ' + c.label);
+        delBtn.onclick = function () {
+            if (!confirm('删除等时圈「' + c.label + '」？')) return;
+            removeCircle(c.id);
+            saveState();
+        };
         div.appendChild(check);
         div.appendChild(dot);
         div.appendChild(label);
@@ -1089,6 +1242,7 @@ function renderCircleList() {
         if (c.visible === false) div.style.opacity = '0.5';
         box.appendChild(div);
     });
+    updateActionStates();
 }
 
 function applyCircleVisibility(c) {
@@ -1373,17 +1527,19 @@ function exportIntersectGeoJSON() {
 
 function afterCirclesChanged(notify) {
     // 圈变化：清除 POI 来源的地点（圈变了结果不再有效），保留导入的并重新计算归属
+    var removedPoi = 0;
     Object.keys(communities).forEach(function (k) {
         var item = communities[k];
         if (item.source === 'poi') {
             item.marker.setMap(null);
             delete communities[k];
+            removedPoi++;
         }
     });
     refreshMembership();
     refreshIntersect();
-    if (notify && Object.keys(communities).length) {
-        toast('等时圈已变更，圈内归属已重新计算，POI 检索结果已清除');
+    if (notify && removedPoi > 0) {
+        toast('等时圈已变更，圈内 POI 检索结果已清除');
     }
 }
 
@@ -1447,19 +1603,37 @@ function searchCommunities() {
     // 只检索勾选（显示）的圈；未加载完几何的圈跳过，避免用无效外接矩形检索
     var queue = circles.filter(function (c) { return c.visible !== false && c.polygons && c.polygons.length; });
     if (!queue.length) { toast('请先勾选至少一个已加载的等时圈'); return; }
+    if (searchRunning || batchRunning) { toast('有任务正在进行，请稍候'); return; }
     // 按圈的外接矩形检索（调用次数少、不触限流），再用几何关系精确过滤到多边形内（各圈结果取并集）
     var before = Object.keys(communities).length;
-    toast('正在检索圈内地点…', 60000);
+    var total = queue.length, doneCount = 0;
+    var ctrl = { aborted: false };
+    var finished = false;
+    searchRunning = true;
+    updateActionStates();
+    function finishSearch(cancelled) {
+        if (finished) return;
+        finished = true;
+        searchRunning = false;
+        progressHide();
+        renderPoiList();
+        var grown = Object.keys(communities).length - before;
+        var now = Object.keys(communities).length;
+        toast(cancelled
+            ? '已取消检索，本次新增 ' + grown + ' 个，当前共 ' + now + ' 个候选地点'
+            : '检索完成，本次新增 ' + grown + ' 个，当前共 ' + now + ' 个候选地点');
+    }
+    progressShow('检索圈内地点…', function () {
+        ctrl.aborted = true;
+        finishSearch(true);
+    });
     (function nextCircle() {
-        if (!queue.length) {
-            renderPoiList();
-            var grown = Object.keys(communities).length - before;
-            toast('检索完成，本次新增 ' + grown + ' 个，当前共 ' + Object.keys(communities).length + ' 个候选地点');
-            return;
-        }
+        if (ctrl.aborted) return;
+        if (!queue.length) { finishSearch(false); return; }
         var c = queue.shift();
         var bounds = boundsOfCircle(c);
         rectSearchPaged(bounds, 1, [], function (pois) {
+            if (ctrl.aborted) return;
             var inside = 0;
             pois.forEach(function (p) {
                 if (!p.location) return;
@@ -1469,7 +1643,8 @@ function searchCommunities() {
                     inside++;
                 }
             });
-            toast('「' + c.label + '」圈内 ' + inside + ' 个，继续…', 60000);
+            doneCount++;
+            progressUpdate(doneCount, total, '检索圈内地点（本圈 ' + inside + ' 个）');
             setTimeout(nextCircle, 400);
         });
     })();
@@ -1517,17 +1692,27 @@ function importCandidates() {
     var lines = text.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
     if (!lines.length) return;
     if (lines.length > 50) { toast('一次最多导入 50 条'); return; }
-    toast('导入定位中（0/' + lines.length + '）…', 60000);
+    if (searchRunning || batchRunning) { toast('有任务正在进行，请稍候'); return; }
     var i = 0, okCount = 0, fail = [];
+    var ctrl = { aborted: false };
+    var finished = false;
+    function finishImport(cancelled) {
+        if (finished) return;
+        finished = true;
+        progressHide();
+        refreshMembership();
+        renderPoiList();
+        var msg = (cancelled ? '已取消导入：成功 ' : '导入完成：成功 ') + okCount + ' 条';
+        if (fail.length) msg += '，未定位 ' + fail.length + ' 条（' + fail.slice(0, 3).join('、') + (fail.length > 3 ? '…' : '') + '）';
+        toast(msg, 4000);
+    }
+    progressShow('导入定位中…', function () {
+        ctrl.aborted = true;
+        finishImport(true);
+    });
     (function next() {
-        if (i >= lines.length) {
-            refreshMembership();
-            renderPoiList();
-            var msg = '导入完成：成功 ' + okCount + ' 条';
-            if (fail.length) msg += '，未定位 ' + fail.length + ' 条（' + fail.slice(0, 3).join('、') + (fail.length > 3 ? '…' : '') + '）';
-            toast(msg, 4000);
-            return;
-        }
+        if (ctrl.aborted) return;
+        if (i >= lines.length) { finishImport(false); return; }
         var line = lines[i++];
         var parts = line.split(/[,，]/);
         var kw = parts[0];
@@ -1542,9 +1727,10 @@ function importCandidates() {
                 return s === 'complete' && !!(result && result.poiList && result.poiList.pois.length);
             },
             onDone: function (status, result) {
+                if (ctrl.aborted) return;
                 if (status === 'success') { addCommunity(result.poiList.pois[0], 'import'); okCount++; }
                 else fail.push(kw);
-                toast('导入定位中（' + i + '/' + lines.length + '）…', 60000);
+                progressUpdate(i, lines.length, '导入定位中');
                 next();
             }
         });
@@ -1552,6 +1738,8 @@ function importCandidates() {
 }
 
 function clearCommunities() {
+    var count = Object.keys(communities).length;
+    if (count > 0 && !confirm('清空全部 ' + count + ' 个候选地点？')) return;
     Object.values(communities).forEach(function (item) { item.marker.setMap(null); });
     communities = {};
     renderPoiList();
@@ -1714,9 +1902,6 @@ function openInfo(item) {
     infoWindow.open(map, item.poi.location);
 }
 
-var batchRunning = false;
-var batchCtrl = null;
-
 function batchCommute() {
     if (batchRunning) { toast('批量计算正在进行，请稍候'); return; }
     var list = Object.values(communities);
@@ -1730,7 +1915,7 @@ function batchCommute() {
     if (list.length > 80) { toast('候选过多，请先筛选（一次最多批量 80 个）'); list = list.slice(0, 80); }
     batchRunning = true;
     batchCtrl = { aborted: false };
-    document.getElementById('batchBtn').disabled = true;
+    updateActionStates();
     var total = list.length, doneCount = 0, idx = 0;
     // 行内状态徽标：等待中 → 计算中 → 通勤时间徽标（失败则出现「重试」按钮）
     list.forEach(function (item) { item.state = 'wait'; updateItemView(item); });
@@ -1741,7 +1926,7 @@ function batchCommute() {
     function finishAll(cancelled) {
         if (!batchRunning) return;   // 取消后在飞请求回落完成时不再重复收尾
         batchRunning = false;
-        document.getElementById('batchBtn').disabled = false;
+        updateActionStates();
         progressHide();
         persistCommuteCache();
         list.forEach(function (item) { item.state = null; });
@@ -1864,19 +2049,36 @@ function renderPoiList() {
 
     if (!count) {
         box.innerHTML = '<div class="hint" style="padding:8px 2px">暂无候选地点：先在 ① 设置起点、② 画等时圈，再点上方「检索圈内地点」，或展开导入自己的候选清单。</div>';
+        updateActionStates();
+        return;
+    }
+    if (!list.length) {
+        box.innerHTML = '<div class="hint" style="padding:8px 2px">无符合筛选条件的候选地点</div>';
+        updateActionStates();
         return;
     }
     list.forEach(function (item) {
         var div = document.createElement('div');
         div.className = 'poi-item';
+        div.tabIndex = 0;
+        div.setAttribute('role', 'button');
         item.dom = div;
         renderPoiRow(item);
-        div.onclick = function () {
+        function activate() {
             map.panTo(item.poi.location);
             computeCommute(item);
+        }
+        div.onclick = activate;
+        div.onkeydown = function (ev) {
+            if (ev.target !== div) return;   // 内部「重试」按钮保留原生键盘行为
+            if (ev.key === 'Enter' || ev.key === ' ') {
+                ev.preventDefault();
+                activate();
+            }
         };
         box.appendChild(div);
     });
+    updateActionStates();
 }
 
 /* ============ 导出 ============ */
@@ -1903,6 +2105,7 @@ function exportGeoJSON() {
         };
     });
     downloadFile(JSON.stringify({ type: 'FeatureCollection', features: features }), '通勤等时圈.geojson', 'application/geo+json');
+    toast('已导出 GeoJSON（' + features.length + ' 个圈）');
 }
 
 function exportCSV() {
@@ -1939,6 +2142,7 @@ function exportCSV() {
         return r.map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',');
     }).join('\r\n');
     downloadFile(csv, '候选地点通勤结果.csv', 'text/csv');
+    toast('已导出 CSV（' + list.length + ' 条）');
 }
 
 function downloadFile(content, filename, mime) {
