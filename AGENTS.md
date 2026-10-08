@@ -18,22 +18,23 @@
 ## 数据管线（metro.html 的数据从哪来）
 
 ```
-朋友仓库 output/<城市>/*.csv
+朋友仓库 output/*.csv（根目录：全市三个 CSV + stations_all.csv）
   → python3 tools/build_metro_data.py --city <id> --city-name <中文名> --input <output目录> --output data/<id>
-  → data/<id>/{meta.json, stations.json, rows/<组id>.json} + 更新 data/index.json
+  → data/<id>/{meta.json, stations.json, rows/<组id>.json, lines.json} + 更新 data/index.json
 ```
 
 前端数据契约（metro.html 依赖，改动需同步两侧）：
 
 - 站点按**站名分组**（同站不同线的节点合并），组 id 为 `g001…`；`stations.json` 含每组坐标（GCJ-02）、线路、avg_minutes、rank。
 - `rows/<组id>.json` = `{"t": {目的组id: 分钟整数}}`，按需 fetch，不含自身。
-- 节点唯一键是 `{line_order}:{station_id}`（station_id 跨线路会复用，不能单独用）。
+- `lines.json`（可选，旧城市数据可能没有）= `{"lines": [{label, color, groups: [组id 按线路顺序]}]}`，由 `stations_all.csv` 行序生成，前端画 Polyline；标志色在脚本的 `CITY_LINE_COLORS` 维护，未收录线路用灰。前端必须容忍 404（按无线处理）。
+- 节点唯一键是 `{line_order}:{station_id}`（station_id 跨线路会复用，不能单独用）；`stations_all.csv` 的 station_id 是另一套格式，关联只能按 `(line, 站名)`。
 
 已知坑：
 
 - 爬虫输出的 CSV **可能带 BOM**——读 CSV 一律 `utf-8-sig`。
 - 未解析站点（高德 POI 缺失，如厦门 6 号线角美段）会被排除并记入 `meta.json.unresolved_nodes`，属正常现象。
-- `tools/fixtures/shanghai/` 是 12 站演示数据，不是真实爬取结果；`data/shanghai/` 当前由它生成。
+- `tools/fixtures/shanghai/` 是 12 站演示数据，仅供脚本测试；`data/shanghai/` 已由朋友仓库真实输出重建，别再拿 fixtures 覆盖。
 
 ## 边界与禁区
 

@@ -197,6 +197,9 @@
                     <button id="lineAllBtn" class="link-btn">全选</button>
                     <button id="lineNoneBtn" class="link-btn">清空</button>
                     <span id="lineChipCount"></span>
+                    <label style="float:right;display:inline-flex;align-items:center;gap:4px;cursor:pointer">
+                        <input type="checkbox" id="showLinesChk" checked style="width:auto;height:auto;margin:0"> 地图画线
+                    </label>
                 </div>
                 <div class="chip-row" id="lineChips"></div>
                 <div class="hint" id="rankCount"></div>
@@ -409,6 +412,9 @@ var rankSortAsc = true;          // 排行榜 avg_minutes 排序方向
 var avgFilterMax = 0;            // 0=不限；否则只显示 avg_minutes<=该值的站（无数据站同时隐藏）
 var lineFilterOn = {};           // 线路 label -> bool；站只要含一条选中线路即显示
 var allLineLabels = [];          // 当前城市全部线路（数字线路在前，已排序）
+var linesData = [];              // lines.json：[{label, color, groups:[gid...]}]，画地铁线折线
+var lineOverlays = [];           // 地铁线 Polyline 实例
+var showLines = true;            // 「地图画线」开关
 
 /* 全城视图配色：≤40 绿、≤50 黄、≤60 橙、>60 红、无数据灰（单位：分钟，见 renderLegend 标题） */
 var CITY_COLORS = ['#059669', '#d97706', '#ea580c', '#dc2626', '#9ca3af'];
@@ -507,6 +513,10 @@ function initAppData() {
     };
     document.getElementById('lineAllBtn').onclick = function () { setAllLines(true); };
     document.getElementById('lineNoneBtn').onclick = function () { setAllLines(false); };
+    document.getElementById('showLinesChk').onchange = function () {
+        showLines = this.checked;
+        if (map) drawLineOverlays();
+    };
 
     loadCityIndex();
 }
@@ -550,16 +560,24 @@ function selectCity(city) {
     meta = null;
     groups = [];
     groupById = {};
+    linesData = [];
+    showLines = true;
+    document.getElementById('showLinesChk').checked = true;
+    clearLineOverlays();
     document.getElementById('rankBody').innerHTML = '';
     document.getElementById('rankCount').innerHTML = '<span class="spinner"></span> 数据加载中…';
     Promise.all([
         fetch('data/' + city + '/meta.json').then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }),
-        fetch('data/' + city + '/stations.json').then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        fetch('data/' + city + '/stations.json').then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        // lines.json 为可选项（旧数据可能不存在），缺失时按无线处理
+        fetch('data/' + city + '/lines.json').then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+            .catch(function () { return { lines: [] }; })
     ]).then(function (res) {
         if (city !== currentCity) return;   // 已切走，丢弃过期结果
         meta = res[0];
         groups = (res[1] && res[1].groups) || [];
         groups.forEach(function (g) { groupById[g.id] = g; });
+        linesData = (res[2] && res[2].lines) || [];
         avgFilterMax = 0;
         document.getElementById('avgFilter').value = '0';
         buildLineChips();
@@ -629,6 +647,37 @@ function renderLegend(title, items) {
     document.getElementById('legend').innerHTML = html;
 }
 
+/* ============ 地铁线路折线（官方标志色，与线路筛选联动） ============ */
+function clearLineOverlays() {
+    lineOverlays.forEach(function (o) { o.setMap(null); });
+    lineOverlays = [];
+}
+
+function drawLineOverlays() {
+    if (!map) return;
+    clearLineOverlays();
+    if (!showLines || !linesData.length) return;
+    linesData.forEach(function (ln) {
+        if (lineFilterOn[ln.label] === false) return;   // 只画筛选中选中的线路
+        var pts = [];
+        (ln.groups || []).forEach(function (gid) {
+            var g = groupById[gid];
+            if (g) pts.push([g.lng, g.lat]);
+        });
+        if (pts.length < 2) return;
+        var poly = new AMap.Polyline({
+            path: pts,
+            strokeColor: ln.color || '#9ca3af',
+            strokeWeight: 4,
+            strokeOpacity: 0.9,
+            zIndex: 45,          // 低于等值圈(60-63)与散点(110)
+            bubble: true         // 事件穿透，不挡散点点击
+        });
+        poly.setMap(map);
+        lineOverlays.push(poly);
+    });
+}
+
 /* ============ 视图一：全城可达性 ============ */
 function drawCityView() {
     if (!map) return;
@@ -639,6 +688,7 @@ function drawCityView() {
         return { lnglat: [g.lng, g.lat], style: cityColorIdx(g.avg_minutes), gid: g.id };
     });
     setMassMarks(styles, data);
+    drawLineOverlays();
     renderLegend('全市平均通勤时间（分钟）', CITY_LEGEND);
 }
 
@@ -876,6 +926,7 @@ function drawOriginView(g, rowsData) {
         data.push({ lnglat: [gg.lng, gg.lat], style: originColorIdx(m != null ? m : null), gid: gg.id });
     });
     setMassMarks(styles, data);
+    drawLineOverlays();
 
     originMarker = new AMap.Marker({
         map: map,

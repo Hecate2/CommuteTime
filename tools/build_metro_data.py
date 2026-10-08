@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """把 shmetro-accessibility 项目输出的 CSV 转换为前端消费的静态 JSON。
 
-输入（对方项目 output 目录下的三个 CSV）：
+输入（对方项目 output 目录下）：
   amap_station_matches.csv   站点元数据 + GCJ-02 坐标（status==resolved 且 location 非空才可用）
   travel_time_matrix.csv     N×N 长表（utf-8-sig，只保留 status==done 的行）
   average_time_ranking.csv   站点平均通勤时间排行（average_minutes 可能为 "NaN"）
+  stations_all.csv           可选：每条线的站点顺序（行序即线路顺序），用于生成地铁线折线
 
 输出（--output 目录，例如 data/shanghai/）：
   meta.json            城市元信息、节点/组/对数、未解析节点列表
   stations.json        按站名聚合的分组（含坐标均值、线路、排行）
   rows/<group_id>.json 每组到其他组的分钟数：{"t": {"g002": 12, ...}}
+  lines.json           可选：每条线的组 id 有序序列 + 标志色，供前端画 Polyline
 并追加/更新 <output 父目录>/index.json 城市清单。
 """
 from __future__ import annotations
@@ -36,8 +38,25 @@ RANKING_COLUMNS = [
     "rank", "station_id", "line_order", "line_label", "station_name",
     "average_minutes", "sample_size",
 ]
+STATIONS_ALL_COLUMNS = ["line", "station_id", "station_name"]
 
 DEPARTURE_NOTE = "工作日 07:15 出发，含进出站步行与候车"
+
+# 线路官方标志色：上海取自上海地铁官方发布（见维基百科「Template:上海地铁颜色」），
+# 厦门为主题色近似值（1 闽南红 / 2 鹭岛绿 / 3 云天青 CMYK 63,0,18,0）；未收录线路用灰。
+CITY_LINE_COLORS = {
+    "shanghai": {
+        "1号线": "#E3002B", "2号线": "#82BF25", "3号线": "#FCD600", "4号线": "#461D84",
+        "5号线": "#944D9A", "6号线": "#D40068", "7号线": "#ED6F00", "8号线": "#0094D8",
+        "9号线": "#87CAED", "10号线": "#C6AFD4", "11号线": "#871C2B", "12号线": "#007B61",
+        "13号线": "#E999C0", "14号线": "#626020", "15号线": "#BCA886", "16号线": "#98D1C0",
+        "17号线": "#BC796F", "18号线": "#C4984F", "浦江线": "#B5B5B6", "磁浮线": "#008B9A",
+    },
+    "xiamen": {
+        "1号线": "#E60012", "2号线": "#00A650", "3号线": "#5ED1D1",
+    },
+}
+DEFAULT_LINE_COLOR = "#9ca3af"
 
 
 def fail(message: str) -> "SystemExit":
@@ -198,6 +217,61 @@ def build_rows(groups, matrix: dict[tuple[str, str], int]):
     return rows, pair_count
 
 
+def load_lines(stations_all_path: Path, city: str, nodes: dict[str, dict], groups) -> tuple[list[dict], int]:
+    """把 stations_all.csv 的线路站点顺序映射为组 id 序列（行序即线路顺序）。
+
+    返回 (lines, missing)。stations_all.csv 不存在时返回 ([], 0)。
+    stations_all 的 station_id 与 matches 不同格式，故按 (line, 站名) 关联。
+    """
+    if not stations_all_path.is_file():
+        return [], 0
+
+    by_line_name: dict[tuple[str, str], str] = {}
+    label_by_order: dict[str, str] = {}
+    for key, node in nodes.items():
+        by_line_name[(node["line_order"], node["name"])] = key
+        label_by_order.setdefault(node["line_order"], node["line_label"])
+    node_group: dict[str, str] = {}
+    for g in groups:
+        for k in g["nodes"]:
+            node_group[k] = g["id"]
+
+    colors = CITY_LINE_COLORS.get(city, {})
+    lines: list[dict] = []
+    missing = 0
+
+    def flush(order: str, names: list[str]) -> None:
+        nonlocal missing
+        seq: list[str] = []
+        for name in names:
+            key = by_line_name.get((order, name))
+            gid = node_group.get(key) if key else None
+            if gid is None:
+                missing += 1
+                continue
+            if not seq or seq[-1] != gid:   # 去重，保序
+                seq.append(gid)
+        if len(seq) < 2:
+            missing += len(seq)
+            return
+        label = label_by_order.get(order, order)
+        lines.append({"label": label, "color": colors.get(label, DEFAULT_LINE_COLOR), "groups": seq})
+
+    current_order: str | None = None
+    current_names: list[str] = []
+    for row in read_rows(stations_all_path, STATIONS_ALL_COLUMNS):
+        order = row["line"].strip()
+        if current_order is None:
+            current_order = order
+        elif order != current_order:
+            flush(current_order, current_names)
+            current_order, current_names = order, []
+        current_names.append(row["station_name"].strip())
+    if current_order is not None:
+        flush(current_order, current_names)
+    return lines, missing
+
+
 def update_index(index_path: Path, city: str, city_name: str, group_count: int) -> None:
     cities = []
     if index_path.is_file():
@@ -239,6 +313,7 @@ def main() -> int:
 
     groups = build_groups(nodes, rankings)
     rows, pair_count = build_rows(groups, matrix)
+    lines, line_missing = load_lines(input_dir / "stations_all.csv", args.city, nodes, groups)
 
     output_dir: Path = args.output
     rows_dir = output_dir / "rows"
@@ -248,6 +323,11 @@ def main() -> int:
         json.dumps({"groups": groups}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    if lines:
+        (output_dir / "lines.json").write_text(
+            json.dumps({"lines": lines}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     for group_id, dest in rows.items():
         (rows_dir / f"{group_id}.json").write_text(
             json.dumps({"t": dest}, ensure_ascii=False) + "\n",
@@ -262,6 +342,8 @@ def main() -> int:
         "group_count": len(groups),
         "node_count": len(nodes),
         "pair_count": pair_count,
+        "line_count": len(lines),
+        "line_missing_stations": line_missing,
         "unresolved_nodes": unresolved,
     }
     (output_dir / "meta.json").write_text(
@@ -273,6 +355,8 @@ def main() -> int:
 
     print(f"{args.city_name}: {len(groups)} 组 / {len(nodes)} 节点 / {pair_count} 组间对"
           f"（未解析节点 {len(unresolved)} 个）-> {output_dir}")
+    if lines:
+        print(f"线路折线 {len(lines)} 条（缺站点 {line_missing} 个）-> {output_dir / 'lines.json'}")
     return 0
 
 
