@@ -81,6 +81,7 @@
     .intersect-bar label { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
     .circle-item input[type=checkbox] { width: auto; height: auto; margin: 0; }
     #intersectInfo { font-size: 12px; color: #6b7280; }
+    #diffInfo { font-size: 12px; color: #6b7280; }
     button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
     textarea:focus-visible, .poi-item:focus-visible {
         outline: 2px solid #2563eb; outline-offset: 1px;
@@ -152,6 +153,7 @@
     }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/dist/polygon-clipping.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -166,12 +168,13 @@
 
         <section>
             <details>
-                <summary>高德密钥设置</summary>
+                <summary>密钥设置</summary>
                 <div style="margin-top:6px">
-                    <input type="text" id="keyInput" placeholder="JS API Key（Web端开发者类型）">
-                    <input type="text" id="codeInput" placeholder="安全密钥 securityJsCode">
+                    <input type="text" id="keyInput" placeholder="高德JS API Key（Web端开发者类型）">
+                    <input type="text" id="codeInput" placeholder="高德安全密钥 securityJsCode">
+                    <input type="text" id="mapboxInput" placeholder="Mapbox Token（驾车/骑行/步行(Mapbox)圈）">
                     <button id="saveKeyBtn" class="ghost">保存并刷新</button>
-                    <div class="hint">申请：console.amap.com → 应用管理 → 创建 Key（服务平台选「Web端(JS API)」）。密钥保存在浏览器本地，不会上传服务器。</div>
+                    <div class="hint">申请：console.amap.com → 应用管理 → 创建 Key（服务平台选「Web端(JS API)」）。Mapbox Token 去 account.mapbox.com 申请（公开 pk token 即可）。密钥保存在浏览器本地，不会上传服务器。</div>
                 </div>
             </details>
         </section>
@@ -197,6 +200,9 @@
                     <option value="BUS">公交（真实路网）</option>
                     <option value="walk">步行</option>
                     <option value="ride">骑行</option>
+                    <option value="mapbox-driving">驾车(Mapbox)</option>
+                    <option value="mapbox-cycling">骑行(Mapbox)</option>
+                    <option value="mapbox-walking">步行(Mapbox)</option>
                 </select>
                 <input type="number" id="minutes" min="1" max="120" value="30" style="flex:0 0 64px">
             </div>
@@ -214,12 +220,20 @@
             </div>
             <div class="hint">「精确路网圈」沿 24 个方向用真实步行/骑行路径逐点二分边界（约 200 次调用、30~60 秒，更准）；不勾选则按上方速度画直线近似圈，秒出。</div>
             <div id="circleList"></div>
+            <div class="row" style="margin-top:6px">
+                <button id="selectAllBtn" class="ghost">全选 / 全不选</button>
+                <input type="number" id="batchMinutes" min="1" max="120" placeholder="分钟" style="flex:0 0 70px">
+                <button id="retimeBtn" class="ghost">选中圈改为该时长</button>
+            </div>
+            <div class="hint" style="margin-top:4px">本地圈缓存：<span id="geomCacheInfo">…</span></div>
             <div class="intersect-bar">
                 <label><input type="checkbox" id="onlyIntersect"> 只显示所选圈的交集</label>
+                <label><input type="checkbox" id="onlyDiff"> 只显示所选两圈的差集</label>
                 <button id="exportIntersectBtn" class="ghost" style="height:24px;font-size:12px">导出交集 GeoJSON</button>
                 <span id="intersectInfo"></span>
+                <span id="diffInfo"></span>
             </div>
-            <div class="hint">勾选=显示该圈，未勾选的圈会被隐藏，也不参与交集计算与导出；开启开关后地图仅显示所有勾选圈的公共交集（即同时被每个勾选圈包含的区域），列表也只保留交集内候选。</div>
+            <div class="hint">勾选=显示该圈，未勾选的圈会被隐藏，也不参与交集/差集计算与导出；交集开关显示所有勾选圈的公共部分（灰色），差集开关需刚好勾选2个圈、用各自颜色显示互不覆盖的部分，两开关可同时开，列表与批量计算跟随所显示区域。</div>
             <div class="row" style="margin-top:8px">
                 <select id="coord" style="flex:0 0 110px">
                     <option value="WGS84">WGS84</option>
@@ -257,7 +271,7 @@
         </section>
 
         <footer>
-            说明：步行/骑行默认按可调速度画直线近似圈（默认步行 4.5km/h、骑行 9 km/h），勾选「精确路网圈」后改用真实路径逐方向二分（慢但准）；地铁/公交圈来自高德到达圈（不含等车与换乘耗时），以「真实通勤时间」为最终依据。候选地点来自高德 POI 或手动导入。配色：候选点按真实通勤时间 ≤30分钟 绿，≤45 黄，≤60 橙，&gt;60 红；等时圈边界按设定时长绘制（等时圈设定时长），两者口径不同。
+            说明：步行/骑行默认按可调速度画直线近似圈（默认步行 4.5km/h、骑行 9 km/h），勾选「精确路网圈」后改用真实路径逐方向二分（慢但准）；<b>驾车/骑行/步行(Mapbox)</b>调用 Mapbox 等时圈接口（需自备 Token，上限 60 分钟）；地铁/公交圈来自高德到达圈（不含等车与换乘耗时），以「真实通勤时间」为最终依据。候选地点来自高德 POI 或手动导入。配色：候选点按真实通勤时间 ≤30分钟 绿，≤45 黄，≤60 橙，&gt;60 红；等时圈边界按设定时长绘制（等时圈设定时长），两者口径不同。
         </footer>
     </aside>
     <div id="container"></div>
@@ -302,6 +316,7 @@ function parseYAML(text) {
 
 var AMAP_KEY = '';
 var AMAP_CODE = '';
+var MAPBOX_TOKEN = '';
 var PLACEHOLDER_KEY = 'YOUR_KEY_HERE';
 var MAP_CENTER = [121.4997, 31.2397];   // 默认上海陆家嘴（GCJ-02）
 var MAP_ZOOM = 12;
@@ -319,14 +334,16 @@ function parseMapView(centerStr, zoomStr) {
     }
 }
 
-function initKeys(cfgKey, cfgCode) {
+function initKeys(cfgKey, cfgCode, cfgMapbox) {
     var storedKey = localStorage.getItem('amap_key') || '';
     var storedCode = localStorage.getItem('amap_code') || '';
     AMAP_KEY = storedKey || cfgKey || '';
     AMAP_CODE = storedCode || cfgCode || '';
+    MAPBOX_TOKEN = localStorage.getItem('mapbox_token') || cfgMapbox || '';
 
     document.getElementById('keyInput').value = AMAP_KEY;
     document.getElementById('codeInput').value = AMAP_CODE;
+    document.getElementById('mapboxInput').value = MAPBOX_TOKEN;
 
     if (!AMAP_KEY || !AMAP_CODE || AMAP_KEY === PLACEHOLDER_KEY) {
         showKeyModal();
@@ -346,6 +363,9 @@ function saveKeys(k, c) {
 document.getElementById('saveKeyBtn').onclick = function () {
     var k = document.getElementById('keyInput').value.trim();
     var c = document.getElementById('codeInput').value.trim();
+    var m = document.getElementById('mapboxInput').value.trim();
+    if (m) localStorage.setItem('mapbox_token', m);
+    else localStorage.removeItem('mapbox_token');
     saveKeys(k, c);
 };
 
@@ -384,7 +404,7 @@ fetch('config.yaml')
     .then(function (text) {
         var cfg = parseYAML(text);
         parseMapView(cfg.map_center, cfg.map_zoom);
-        initKeys(cfg.amap_key, cfg.amap_code);
+        initKeys(cfg.amap_key, cfg.amap_code, cfg.mapbox_token);
     })
     .catch(function () {
         initKeys('', '');
@@ -752,7 +772,7 @@ function applyDeepLink() {
                     clearInterval(iv);
                     document.getElementById('onlyIntersect').checked = true;
                     intersectOnly = true;
-                    refreshIntersect();
+                    refreshRegions();
                 }
             }, 500);
         }
@@ -761,7 +781,39 @@ function applyDeepLink() {
 }
 
 /* ============ 动态加载高德 JSAPI 2.0 ============ */
+/* 捕获高德 SDK 报出的 INVALID_USER_DOMAIN：当前页面 origin 不在该 Key 的
+ * 域名白名单内。SDK 以 console 报错形式输出（跨域脚本拿不到 error 事件），
+ * 故在此拦截 console，命中一次即说明原因并弹框引导填入正确密钥。 */
+var _domainErrShown = false;
+function watchInvalidDomain() {
+    if (watchInvalidDomain._on || typeof console === 'undefined') return;
+    watchInvalidDomain._on = true;
+    ['error', 'warn', 'log'].forEach(function (m) {
+        var orig = console[m] ? console[m].bind(console) : null;
+        console[m] = function () {
+            try {
+                var parts = Array.prototype.map.call(arguments, function (a) {
+                    if (typeof a === 'string') return a;
+                    try { return JSON.stringify(a); } catch (e) { return String(a); }
+                });
+                if (parts.join(' ').indexOf('INVALID_USER_DOMAIN') !== -1 && !_domainErrShown) {
+                    _domainErrShown = true;
+                    onInvalidDomain();
+                }
+            } catch (e) { /* ignore */ }
+            if (orig) orig.apply(null, arguments);
+        };
+    });
+}
+
+function onInvalidDomain() {
+    var origin = location.protocol + '//' + location.host;
+    toast('地图加载被拒绝（INVALID_USER_DOMAIN）：当前 Key 的域名白名单不含 ' + origin + '，请填入该域名可用的高德密钥', 9000);
+    try { showKeyModal(); } catch (e) { /* ignore */ }
+}
+
 function loadAMap() {
+    watchInvalidDomain();
     window._AMapSecurityConfig = { securityJsCode: AMAP_CODE };
     var _s = document.createElement('script');
     _s.src = 'https://webapi.amap.com/maps?v=2.0&key=' + encodeURIComponent(AMAP_KEY);
@@ -784,12 +836,17 @@ var circles = [];                        // {id,companyId,label,mode,minutes,col
 var communities = {};                    // key -> {poi,marker,circleIds:Set,source,data:{},dom}
 var circleSeq = 0;
 var PALETTE = ['#2563eb', '#ea580c', '#059669', '#7c3aed', '#d97706', '#dc2626', '#0891b2', '#be185d'];
-var MODE_LABEL = { 'SUBWAY,BUS': '地铁+公交', 'SUBWAY': '地铁', 'BUS': '公交', 'walk': '步行', 'ride': '骑行' };
+var MODE_LABEL = { 'SUBWAY,BUS': '地铁+公交', 'SUBWAY': '地铁', 'BUS': '公交', 'walk': '步行', 'ride': '骑行', 'mapbox-driving': '驾车(Mapbox)', 'mapbox-cycling': '骑行(Mapbox)', 'mapbox-walking': '步行(Mapbox)' };
 var infoWindow = null;
 /* 交集状态 */
 var intersectOnly = false;
 var intersectOverlays = [];
 var intersectGeom = null;  // MultiPolygon coordinates in GCJ02
+/* 差集状态（要求刚好2个勾选圈；圈数不符时不渲染也不自动取消勾选） */
+var diffOnly = false;
+var diffOverlays = [];
+var diffGeomA = null;  // 圈A有、B无（A色显示）
+var diffGeomB = null;  // 圈B有、A无（B色显示）
 
 /* 前置条件禁用态与移动端抽屉摘要：候选数/圈数/起点数变化时统一刷新 */
 var batchRunning = false;
@@ -914,11 +971,18 @@ function initApp() {
     map.getCity(function (info) { if (!cityName && info.city) cityName = info.city; });
 
     document.getElementById('addCircleBtn').onclick = onAddCircle;
+    document.getElementById('selectAllBtn').onclick = onSelectAll;
+    document.getElementById('retimeBtn').onclick = onRetimeSelected;
     document.getElementById('exportBtn').onclick = exportGeoJSON;
     document.getElementById('exportIntersectBtn').onclick = exportIntersectGeoJSON;
     document.getElementById('onlyIntersect').onchange = function () {
         intersectOnly = this.checked;
-        refreshIntersect();
+        refreshRegions();
+        saveState();
+    };
+    document.getElementById('onlyDiff').onchange = function () {
+        diffOnly = this.checked;
+        refreshRegions();
         saveState();
     };
     document.getElementById('searchPoiBtn').onclick = searchCommunities;
@@ -931,6 +995,8 @@ function initApp() {
 
     document.getElementById('shareBtn').onclick = shareLink;
 
+    // 几何缓存先于恢复/深链接加载，使其重建时可直接命中
+    loadGeomCache();
     // 深链接（?point=lng,lat&run=1…）优先于本地保存的方案
     if (!applyDeepLink()) restoreState();
 }
@@ -1051,6 +1117,107 @@ function renderCompanySelects() {
     sortSel.value = hasPrev ? sortPrev : 'max';
 }
 
+/* ============ 等时圈几何缓存（lz-string 压缩存 localStorage） ============
+ * 结构 geomCache = { sig: { t: 存入毫秒时间戳, g: compressToUTF16(JSON) } }。
+ * sig = 方式|时长|起点经纬度|速度|精确标志，任一变化即 miss 重查，不会读到过期几何。
+ * 上限 80 条 LRU + 30 天 TTL；无库（typeof LZString === 'undefined'）时读写均为 no-op。
+ * 配额超限只 toast 警告一次/会话，不抛错、不影响主流程。 */
+var geomCache = {};
+var GEOM_CACHE_KEY = 'house_tool_circle_geom';
+var GEOM_CACHE_MAX = 80;
+var GEOM_CACHE_TTL = 30 * 24 * 3600 * 1000;
+var geomCacheWarned = false;
+
+function circleSig(companyId, mode, minutes, preciseFlag) {
+    var comp = companies[companyId];
+    if (!comp || !comp.lnglat) return null;
+    var parts = [mode, minutes, comp.lnglat.lng.toFixed(6), comp.lnglat.lat.toFixed(6)];
+    if (mode === 'walk' || mode === 'ride') {
+        parts.push((mode === 'walk') ? currentWalkSpeed() : currentRideSpeed());
+        parts.push(preciseFlag ? '1' : '0');
+    }
+    return parts.join('|');
+}
+
+function loadGeomCache() {
+    geomCache = {};
+    try {
+        var raw = localStorage.getItem(GEOM_CACHE_KEY);
+        if (!raw) { renderGeomCacheInfo(); return; }
+        var o = JSON.parse(raw);
+        var now = Date.now(), changed = false;
+        Object.keys(o).forEach(function (k) {
+            var e = o[k];
+            if (!e || !e.g || !e.t || (now - e.t) > GEOM_CACHE_TTL) { changed = true; return; }
+            geomCache[k] = e;
+        });
+        var keys = Object.keys(geomCache).sort(function (a, b) { return geomCache[a].t - geomCache[b].t; });
+        while (keys.length > GEOM_CACHE_MAX) { delete geomCache[keys.shift()]; changed = true; }
+        if (changed) persistGeomCache();
+    } catch (e) { geomCache = {}; }
+    renderGeomCacheInfo();
+}
+
+function persistGeomCache() {
+    try {
+        localStorage.setItem(GEOM_CACHE_KEY, JSON.stringify(geomCache));
+    } catch (e) {
+        if (!geomCacheWarned) {
+            geomCacheWarned = true;
+            toast('本地圈缓存已满，本次不再写入（不影响使用）', 4000);
+        }
+    }
+    renderGeomCacheInfo();
+}
+
+function storeGeom(sig, polygons) {
+    if (typeof LZString === 'undefined' || !sig || !polygons || !polygons.length) return;
+    try {
+        geomCache[sig] = { t: Date.now(), g: LZString.compressToUTF16(JSON.stringify(polygons)) };
+        var keys = Object.keys(geomCache).sort(function (a, b) { return geomCache[a].t - geomCache[b].t; });
+        while (keys.length > GEOM_CACHE_MAX) { delete geomCache[keys.shift()]; }
+        persistGeomCache();
+    } catch (e) {
+        if (!geomCacheWarned) {
+            geomCacheWarned = true;
+            toast('本地圈缓存写入失败（不影响使用）', 4000);
+        }
+    }
+}
+
+function fetchGeom(sig) {
+    if (typeof LZString === 'undefined' || !sig) return null;
+    var e = geomCache[sig];
+    if (!e || !e.g) return null;
+    if (Date.now() - e.t > GEOM_CACHE_TTL) { delete geomCache[sig]; persistGeomCache(); return null; }
+    try {
+        var s = LZString.decompressFromUTF16(e.g);
+        if (!s) return null;
+        var polys = JSON.parse(s);
+        if (!polys || !polys.length) return null;
+        return polys;
+    } catch (err) {
+        delete geomCache[sig];
+        persistGeomCache();
+        return null;
+    }
+}
+
+function fmtTime(ts) {
+    var d = new Date(ts);
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function renderGeomCacheInfo() {
+    var el = document.getElementById('geomCacheInfo');
+    if (!el) return;
+    var keys = Object.keys(geomCache);
+    if (!keys.length) { el.textContent = '本地圈缓存：无'; return; }
+    var oldest = keys.reduce(function (a, b) { return geomCache[a].t <= geomCache[b].t ? a : b; });
+    el.textContent = '本地圈缓存：共 ' + keys.length + ' 个，最旧存入 ' + fmtTime(geomCache[oldest].t);
+}
+
 /* ============ 等时圈 ============ */
 function onAddCircle() {
     var companyId = document.getElementById('circleCompany').value;
@@ -1060,25 +1227,73 @@ function onAddCircle() {
     addCircleFrom(companyId, mode, minutes);
 }
 
-function addCircleFrom(companyId, mode, minutes, skipSave) {
+function onSelectAll() {
+    if (!circles.length) { toast('暂无等时圈'); return; }
+    var allVisible = circles.every(function (c) { return c.visible !== false; });
+    circles.forEach(function (c) { c.visible = !allVisible; });
+    renderCircleList();
+    refreshRegions();
+    saveState();
+}
+
+// 把所有勾选的圈按原起点/方式/颜色重建成指定时长（精确圈保持精确）
+function onRetimeSelected() {
+    var m = parseInt(document.getElementById('batchMinutes').value, 10);
+    if (!m || m < 1 || m > 120) { toast('请输入 1-120 分钟'); return; }
+    var sels = circles.filter(function (c) { return c.visible !== false; });
+    if (!sels.length) { toast('请先勾选要修改的等时圈'); return; }
+    var overLimit = sels.some(function (c) { return c.mode !== 'walk' && c.mode !== 'ride' && m > 60; });
+    if (overLimit) { toast('地铁/公交/Mapbox 圈时长需 ≤60 分钟'); return; }
+    sels = sels.filter(function (c) { return c.minutes !== m; });
+    if (!sels.length) { toast('选中圈已经是 ' + m + ' 分钟'); return; }
+    toast('正在重建 ' + sels.length + ' 个圈为 ' + m + ' 分钟…', 4000);
+    var i = 0;
+    (function next() {
+        if (i >= sels.length) return;
+        // 精确圈构建耗时且独占按钮/进度条，等其完成再建下一个
+        if (document.getElementById('addCircleBtn').disabled) { setTimeout(next, 1000); return; }
+        var old = sels[i++];
+        var spec = { companyId: old.companyId, mode: old.mode, color: old.color, precise: old.precise };
+        removeCircle(old.id);
+        addCircleFrom(spec.companyId, spec.mode, m, false, { color: spec.color, precise: spec.precise });
+        setTimeout(next, 500);
+    })();
+}
+
+function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
     var comp = companies[companyId];
     if (!comp) { toast('起点不存在，请重新选择'); renderCompanySelects(); return; }
     var isTransit = (mode !== 'walk' && mode !== 'ride');
-    var precise = !isTransit && document.getElementById('preciseChk').checked;
+    var isMapbox = mode.indexOf('mapbox-') === 0;
+    var precise = !isTransit && ((opts && opts.precise !== undefined) ? opts.precise : document.getElementById('preciseChk').checked);
     if (!minutes || minutes < 1 || minutes > (isTransit ? 60 : 120)) {
-        toast(isTransit ? '地铁/公交圈时长需为 1-60 分钟' : '步行/骑行圈时长需为 1-120 分钟');
+        toast(isMapbox ? 'Mapbox 圈时长需为 1-60 分钟'
+            : (isTransit ? '地铁/公交圈时长需为 1-60 分钟' : '步行/骑行圈时长需为 1-120 分钟'));
         return;
     }
-    var color = PALETTE[circleSeq % PALETTE.length];
+    var color = (opts && opts.color) || PALETTE[circleSeq % PALETTE.length];
     var circle = {
         id: ++circleSeq,
         companyId: companyId,
-        label: comp.name + ' · ' + MODE_LABEL[mode] + ' ' + minutes + ' 分钟' + (isTransit ? '' : (precise ? '(路网)' : '(近似)')),
+        label: circleLabel(comp, mode, minutes, !isTransit && !precise, precise, 0),
         mode: mode, minutes: minutes, color: color, approx: !isTransit && !precise, precise: precise,
-        polygons: [], overlays: [], visible: true
+        polygons: [], overlays: [], visible: true, areaM2: 0
     };
     circles.push(circle);
     renderCircleList();
+
+    // 几何缓存命中则直接装配，跳过 API 查询（与各分支尾巴完全相同的收尾动作）
+    var geomSig = circleSig(companyId, mode, minutes, precise);
+    var hitPolys = fetchGeom(geomSig);
+    if (hitPolys) {
+        circle.polygons = hitPolys;
+        hitPolys.forEach(function (poly) { addPolygonOverlay(circle, poly); });
+        refreshCircleLabel(circle);
+        fitCircle(circle);
+        afterCirclesChanged(false);
+        if (!skipSave) saveState();
+        return;
+    }
 
     if (precise) {
         // 精确路网圈：真实步行/骑行路径逐方向二分边界（消耗配额，约 200 次调用）
@@ -1102,6 +1317,8 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
             }
             circle.polygons = [[ring]];
             addPolygonOverlay(circle, [ring]);
+            storeGeom(geomSig, circle.polygons);
+            refreshCircleLabel(circle);
             fitCircle(circle);
             afterCirclesChanged(false);
         }
@@ -1118,8 +1335,56 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
         var ring = circleRing(comp.lnglat, radius, 72);
         circle.polygons = [[ring]];
         addPolygonOverlay(circle, [ring]);
+        storeGeom(geomSig, circle.polygons);
+        refreshCircleLabel(circle);
         fitCircle(circle);
         afterCirclesChanged(false);
+    } else if (isMapbox) {
+        // Mapbox 等时圈：WGS84 请求，返回 GeoJSON（WGS84）再转回 GCJ02 显示
+        if (!MAPBOX_TOKEN) {
+            toast('请先在「高德密钥设置」里填写 Mapbox Token');
+            removeCircle(circle.id);
+            return;
+        }
+        (function (c, profile) {
+            toast('Mapbox 等时圈查询中…');
+            var wgs = gcj02towgs84(comp.lnglat.lng, comp.lnglat.lat);
+            var url = 'https://api.mapbox.com/isochrone/v1/mapbox/' + profile + '/' +
+                wgs[0] + ',' + wgs[1] + '?contours_minutes=' + minutes +
+                '&polygons=true&access_token=' + encodeURIComponent(MAPBOX_TOKEN);
+            fetch(url).then(function (r) {
+                if (!r.ok) throw new Error('http ' + r.status);
+                return r.json();
+            }).then(function (data) {
+                (data.features || []).forEach(function (f) {
+                    if (!f.geometry || !f.geometry.coordinates) return;
+                    // Polygon 即单个多边形，MultiPolygon 拆成多个，统一归一化入库
+                    var polys = (f.geometry.type === 'MultiPolygon') ? f.geometry.coordinates : [f.geometry.coordinates];
+                    polys.forEach(function (py) {
+                        var gcj = py.map(function (ring) {
+                            return ring.map(function (pt) { return wgs84togcj02(pt[0], pt[1]); });
+                        });
+                        var norm = normalizeBoundsPolygon(gcj);
+                        if (norm) {
+                            c.polygons.push(norm);
+                            addPolygonOverlay(c, norm);
+                        }
+                    });
+                });
+                if (!c.polygons.length) {
+                    toast('Mapbox 无返回数据（Token/配额/网络原因），可稍后重试');
+                    removeCircle(c.id);
+                    return;
+                }
+                storeGeom(geomSig, c.polygons);
+                refreshCircleLabel(c);
+                fitCircle(c);
+                afterCirclesChanged(false);
+            }).catch(function () {
+                toast('Mapbox 查询失败（Token/配额/网络原因），可稍后重试');
+                removeCircle(c.id);
+            });
+        })(circle, mode.slice(7));
     } else {
         toast('到达圈查询中…');
         amapRequest('到达圈', {
@@ -1153,6 +1418,8 @@ function addCircleFrom(companyId, mode, minutes, skipSave) {
                     removeCircle(circle.id);
                     return;
                 }
+                storeGeom(geomSig, circle.polygons);
+                refreshCircleLabel(circle);
                 fitCircle(circle);
                 afterCirclesChanged(false);
             }
@@ -1172,7 +1439,7 @@ function addPolygonOverlay(circle, rings) {
         zIndex: 50
     });
     polygon.setMap(map);
-    if (circle.visible === false || intersectOnly) polygon.hide();
+    if (circle.visible === false || regionsActive()) polygon.hide();
     circle.overlays.push(polygon);
 }
 
@@ -1217,12 +1484,12 @@ function renderCircleList() {
         dot.style.background = c.color;
         var check = document.createElement('input');
         check.type = 'checkbox';
-        check.title = '显示该等时圈（未勾选则隐藏，也不参与交集与导出）';
+        check.title = '显示该等时圈（未勾选则隐藏，也不参与交集/差集与导出）';
         check.checked = c.visible !== false;
         check.onchange = function () {
             c.visible = check.checked;
             div.style.opacity = c.visible ? '1' : '0.5';
-            refreshIntersect();
+            refreshRegions();
             saveState();
         };
         var delBtn = document.createElement('button');
@@ -1245,9 +1512,13 @@ function renderCircleList() {
     updateActionStates();
 }
 
+function regionsActive() {
+    // 任一独占显示生效（开关开且有结果）：原圈隐藏，只显示交集/差集层
+    return (intersectOnly && !!intersectGeom) || (diffOnly && !!(diffGeomA || diffGeomB));
+}
+
 function applyCircleVisibility(c) {
-    // 交集独占模式下原圈一律隐藏，由交集层显示
-    if (intersectOnly) {
+    if (regionsActive()) {
         c.overlays.forEach(function (o) { o.hide(); });
         return;
     }
@@ -1256,7 +1527,8 @@ function applyCircleVisibility(c) {
 
 function applyAllVisibility() {
     circles.forEach(applyCircleVisibility);
-    intersectOverlays.forEach(function (o) { intersectOnly ? o.show() : o.hide(); });
+    intersectOverlays.forEach(function (o) { (intersectOnly && intersectGeom) ? o.show() : o.hide(); });
+    diffOverlays.forEach(function (o) { (diffOnly && (diffGeomA || diffGeomB)) ? o.show() : o.hide(); });
 }
 
 function removeCircle(id) {
@@ -1355,6 +1627,53 @@ function ringArea2(ring) {
     return s / 2;
 }
 
+// 经纬度环面积（平方米，本地平面近似）：|deg²| × 每度米数（经度按纬度收缩）
+function ringAreaM2(ring, latRef) {
+    var lat = (typeof latRef === 'number' && isFinite(latRef)) ? latRef
+        : ((ring.length && typeof ring[0][1] === 'number') ? ring[0][1] : 31);
+    return Math.abs(ringArea2(ring)) * 111320 * Math.cos(lat * Math.PI / 180) * 110540;
+}
+
+// 等时圈总面积 = 各块（外环减洞）之和；c 只需带 {polygons, companyId}
+function circleAreaM2(c) {
+    if (!c || !c.polygons || !c.polygons.length) return 0;
+    var latRef = null;
+    try {
+        var comp0 = companies[c.companyId];
+        if (comp0 && comp0.lnglat) latRef = comp0.lnglat.lat;
+    } catch (e) { /* ignore */ }
+    var total = 0;
+    c.polygons.forEach(function (poly) {
+        if (!poly || !poly.length) return;
+        total += ringAreaM2(poly[0], latRef);
+        for (var h = 1; h < poly.length; h++) total -= ringAreaM2(poly[h], latRef);
+    });
+    return Math.max(total, 0);
+}
+
+function fmtArea(m2) {
+    if (m2 == null || !isFinite(m2) || m2 <= 0) return '';
+    if (m2 >= 1e6) return (m2 / 1e6).toFixed(1) + 'km²';
+    if (m2 >= 10000) return (m2 / 1e6).toFixed(2) + 'km²';
+    return Math.round(m2) + 'm²';
+}
+
+function circleLabel(comp, mode, minutes, approx, precise, areaM2) {
+    var s = comp.name + ' · ' + MODE_LABEL[mode] + ' ' + minutes + ' 分钟' + (approx ? '(近似)' : (precise ? '(路网)' : ''));
+    var a = fmtArea(areaM2);
+    if (a) s += ' · ' + a;
+    return s;
+}
+
+// 几何落定后刷新标签（含面积）并重绘列表
+function refreshCircleLabel(c) {
+    var comp = companies[c.companyId];
+    if (!comp) return;
+    c.areaM2 = circleAreaM2(c);
+    c.label = circleLabel(comp, c.mode, c.minutes, c.approx, c.precise, c.areaM2);
+    renderCircleList();
+}
+
 // 严格数值坐标：裁剪库 RingIn 对每个坐标做 typeof==="number" 强校验，
 // 而 isFinite("121.5")===true 会让数值字符串混过宽松检查、然后在库里抛错。
 // 这里统一转成有限 number，不合法的点返回 null（由调用方剔除）。
@@ -1408,10 +1727,10 @@ function intersectStats(sels) {
 }
 
 // 计算所有勾选圈的公共交集（同时被每个勾选圈包含的区域）。
-// 返回 {geom}；圈不足/无库返回 {reason}；裁剪抛错则直接 throw 由调用方展示。
+// 只勾选1个圈时交集即其自身。返回 {geom}；圈不足/无库返回 {reason}；裁剪抛错则直接 throw 由调用方展示。
 function computeCheckedIntersection() {
     var sels = checkedCircles();
-    if (sels.length < 2) return { geom: null, reason: 'need2' };
+    if (!sels.length) return { geom: null, reason: 'needSel' };
     if (typeof polygonClipping === 'undefined') return { geom: null, reason: 'nolib' };
     var stats = { ringsIn: 0, ringsDropped: 0, polysDropped: 0, ptsDropped: 0 };
     var acc = cleanMP(toClosedMP(sels[0].polygons), stats);
@@ -1427,25 +1746,71 @@ function computeCheckedIntersection() {
     return { geom: acc, reason: null };
 }
 
-function refreshIntersect() {
-    clearIntersectOverlays();
-    if (!intersectOnly) {
-        applyAllVisibility();
-        renderPoiList();
-        return;
-    }
+function clearDiffOverlays() {
+    diffOverlays.forEach(function (o) { o.setMap(null); });
+    diffOverlays = [];
+    diffGeomA = null;
+    diffGeomB = null;
+    document.getElementById('diffInfo').textContent = '';
+}
+
+// 计算刚好2个勾选圈的对称差集：a = A有B无（A色），b = B有A无（B色）。
+// 圈数不是2时返回 {reason:'need2'}（调用方只提示，不断开关勾选）。
+function computeCheckedDifference() {
     var sels = checkedCircles();
-    if (sels.length < 2) {
-        document.getElementById('intersectInfo').textContent = '请至少勾选2个已加载的等时圈';
+    if (sels.length !== 2) return { a: null, b: null, reason: 'need2', sels: sels };
+    if (typeof polygonClipping === 'undefined') return { a: null, b: null, reason: 'nolib', sels: sels };
+    var stats = { ringsIn: 0, ringsDropped: 0, polysDropped: 0, ptsDropped: 0 };
+    var A = cleanMP(toClosedMP(sels[0].polygons), stats);
+    var B = cleanMP(toClosedMP(sels[1].polygons), stats);
+    if (!A || !B) return { a: null, b: null, reason: 'empty', sels: sels };
+    var a = cleanMP(polygonClipping.difference(A, B), stats);
+    var b = cleanMP(polygonClipping.difference(B, A), stats);
+    if (stats.ringsDropped || stats.polysDropped || stats.ptsDropped) {
+        console.warn('[diff] sanitize dropped', stats, intersectStats(sels));
+    }
+    if (!a && !b) return { a: null, b: null, reason: 'empty', sels: sels };
+    return { a: a, b: b, reason: null, sels: sels };
+}
+
+function shortCircle(c) {
+    var nm = '';
+    try { nm = (companies[c.companyId] || {}).name || ''; } catch (e) { /* ignore */ }
+    if (nm.length > 6) nm = nm.slice(0, 6) + '…';
+    return nm + MODE_LABEL[c.mode] + c.minutes + '′';
+}
+
+// 统一刷新交集与差集显示：两开关可同时开（交集灰色、差集各自圈色，可拼出完整 Venn）。
+function refreshRegions() {
+    clearIntersectOverlays();
+    clearDiffOverlays();
+    var needLib = (intersectOnly && checkedCircles().length) || (diffOnly && checkedCircles().length === 2);
+    if (needLib && typeof polygonClipping === 'undefined') {
+        toast('交集库加载失败，请检查网络后刷新（cdn.jsdelivr.net）');
+        if (intersectOnly) document.getElementById('intersectInfo').textContent = '交集库未加载';
+        if (diffOnly) document.getElementById('diffInfo').textContent = '交集库未加载';
         applyAllVisibility();
         renderPoiList();
         return;
     }
-    if (typeof polygonClipping === 'undefined') {
-        toast('交集库加载失败，请检查网络后刷新（cdn.jsdelivr.net）');
-        document.getElementById('intersectInfo').textContent = '交集库未加载';
-        applyAllVisibility();
-        renderPoiList();
+    if (intersectOnly) {
+        refreshIntersectPart();
+    }
+    if (diffOnly) {
+        refreshDiffPart();
+    }
+    var shown = intersectOverlays.concat(diffOverlays);
+    if (shown.length && regionsActive()) {
+        try { map.setFitView(shown, false, fitAvoid()); } catch (e) { /* ignore */ }
+    }
+    applyAllVisibility();
+    renderPoiList();
+}
+
+function refreshIntersectPart() {
+    var sels = checkedCircles();
+    if (!sels.length) {
+        document.getElementById('intersectInfo').textContent = '请勾选已加载的等时圈';
         return;
     }
     var res;
@@ -1454,15 +1819,11 @@ function refreshIntersect() {
     } catch (e) {
         console.error('[intersect] clip throw', e, intersectStats(sels));
         document.getElementById('intersectInfo').textContent = '交集计算失败：' + (e && e.message ? e.message : e);
-        applyAllVisibility();
-        renderPoiList();
         return;
     }
     if (!res.geom) {
         intersectGeom = null;
         document.getElementById('intersectInfo').textContent = '所选圈无交集';
-        applyAllVisibility();
-        renderPoiList();
         return;
     }
     intersectGeom = res.geom;
@@ -1481,22 +1842,73 @@ function refreshIntersect() {
             p.setMap(map);
             intersectOverlays.push(p);
         });
-        document.getElementById('intersectInfo').textContent = '交集：' + sels.length + ' 个圈，' + intersectGeom.length + ' 块多边形';
-        map.setFitView(intersectOverlays, false, fitAvoid());
+        var infoArea = fmtArea(circleAreaM2({ polygons: intersectGeom, companyId: sels[0].companyId }));
+        document.getElementById('intersectInfo').textContent =
+            '交集：' + sels.length + ' 个圈，' + intersectGeom.length + ' 块多边形' + (infoArea ? '，' + infoArea : '');
     } catch (e) {
         console.error('[intersect] render throw', e);
         clearIntersectOverlays();
         document.getElementById('intersectInfo').textContent = '交集绘制失败：' + (e && e.message ? e.message : e);
     }
-    applyAllVisibility();
-    renderPoiList();
+}
+
+function refreshDiffPart() {
+    var sels = checkedCircles();
+    if (sels.length !== 2) {
+        document.getElementById('diffInfo').textContent =
+            '差集需刚好勾选2个已加载的圈（当前' + sels.length + '个），开关已保留';
+        return;
+    }
+    var res;
+    try {
+        res = computeCheckedDifference();
+    } catch (e) {
+        console.error('[diff] clip throw', e, intersectStats(sels));
+        document.getElementById('diffInfo').textContent = '差集计算失败：' + (e && e.message ? e.message : e);
+        return;
+    }
+    if (!res.a && !res.b) {
+        document.getElementById('diffInfo').textContent = '两圈无差集区域（完全重合或数据异常）';
+        return;
+    }
+    diffGeomA = res.a;
+    diffGeomB = res.b;
+    try {
+        renderDiffSide(diffGeomA, res.sels[0].color);
+        renderDiffSide(diffGeomB, res.sels[1].color);
+        var aArea = fmtArea(circleAreaM2({ polygons: diffGeomA || [], companyId: res.sels[0].companyId }));
+        var bArea = fmtArea(circleAreaM2({ polygons: diffGeomB || [], companyId: res.sels[1].companyId }));
+        document.getElementById('diffInfo').innerHTML =
+            '差集：<br>' + escapeHtml(shortCircle(res.sels[0])) + '：' + (aArea || '0m²') +
+            '<br>' + escapeHtml(shortCircle(res.sels[1])) + '：' + (bArea || '0m²');
+    } catch (e) {
+        console.error('[diff] render throw', e);
+        clearDiffOverlays();
+        document.getElementById('diffInfo').textContent = '差集绘制失败：' + (e && e.message ? e.message : e);
+    }
+}
+
+function renderDiffSide(geom, color) {
+    (geom || []).forEach(function (poly) {
+        var p = new AMap.Polygon({
+            path: poly,
+            fillColor: color,
+            fillOpacity: 0.3,
+            strokeColor: color,
+            strokeOpacity: 1,
+            strokeWeight: 2,
+            zIndex: 79
+        });
+        p.setMap(map);
+        diffOverlays.push(p);
+    });
 }
 
 function exportIntersectGeoJSON() {
     if (!intersectGeom || !intersectGeom.length) {
         // 若当前未开启交集模式，尝试即时计算一次以便导出
         var sels = checkedCircles();
-        if (sels.length < 2) { toast('请先勾选至少2个等时圈'); return; }
+        if (!sels.length) { toast('请先勾选等时圈'); return; }
         if (typeof polygonClipping === 'undefined') { toast('交集库未加载'); return; }
         try {
             var res = computeCheckedIntersection();
@@ -1515,11 +1927,12 @@ function exportIntersectGeoJSON() {
         });
     });
     var sels2 = checkedCircles();
+    var interArea = (sels2.length && intersectGeom) ? circleAreaM2({ polygons: intersectGeom, companyId: sels2[0].companyId }) : 0;
     downloadFile(JSON.stringify({
         type: 'FeatureCollection',
         features: [{
             type: 'Feature',
-            properties: { circles: sels2.map(function (c) { return c.label; }) },
+            properties: { circles: sels2.map(function (c) { return c.label; }), area_m2: Math.round(interArea) },
             geometry: { type: 'MultiPolygon', coordinates: coords }
         }]
     }), '等时圈交集.geojson', 'application/geo+json');
@@ -1537,7 +1950,7 @@ function afterCirclesChanged(notify) {
         }
     });
     refreshMembership();
-    refreshIntersect();
+    refreshRegions();
     if (notify && removedPoi > 0) {
         toast('等时圈已变更，圈内 POI 检索结果已清除');
     }
@@ -1906,11 +2319,11 @@ function batchCommute() {
     if (batchRunning) { toast('批量计算正在进行，请稍候'); return; }
     var list = Object.values(communities);
     if (!list.length) { toast('请先检索或导入候选地点'); return; }
-    // 交集独占模式下只算交集内的候选（省配额，且与列表所见一致）；
+    // 交集/差集独占模式下只算显示区域内的候选（省配额，且与列表所见一致）；
     // 最长通勤筛选是结果过滤器，不作为计算范围（否则未计算项永远算不出来）
-    if (intersectOnly && intersectGeom) {
-        list = list.filter(function (item) { return isInIntersection(item.poi.location); });
-        if (!list.length) { toast('交集内暂无候选地点'); return; }
+    if (regionsActive()) {
+        list = list.filter(function (item) { return inShownRegion(item.poi.location); });
+        if (!list.length) { toast('所显示区域内暂无候选地点'); return; }
     }
     if (list.length > 80) { toast('候选过多，请先筛选（一次最多批量 80 个）'); list = list.slice(0, 80); }
     batchRunning = true;
@@ -1970,10 +2383,21 @@ function pointInMP(pt, mp) {
     return false;
 }
 
-function isInIntersection(lnglat) {
-    if (!intersectOnly || !intersectGeom) return true;
+function isInDiff(lnglat) {
+    if (!diffOnly || (!diffGeomA && !diffGeomB)) return true;
     var pt = [lnglat.lng, lnglat.lat];
-    return pointInMP(pt, intersectGeom);
+    return (diffGeomA && pointInMP(pt, diffGeomA)) || (diffGeomB && pointInMP(pt, diffGeomB));
+}
+
+// 当前地图实际显示的区域：交集和差集取并（两开关可同时开拼出完整 Venn）
+function inShownRegion(lnglat) {
+    var useI = intersectOnly && !!intersectGeom;
+    var useD = diffOnly && !!(diffGeomA || diffGeomB);
+    if (!useI && !useD) return true;
+    var pt = [lnglat.lng, lnglat.lat];
+    if (useI && pointInMP(pt, intersectGeom)) return true;
+    if (useD && ((diffGeomA && pointInMP(pt, diffGeomA)) || (diffGeomB && pointInMP(pt, diffGeomB)))) return true;
+    return false;
 }
 
 function renderPoiRow(item) {
@@ -2004,13 +2428,11 @@ function renderPoiRow(item) {
 }
 
 function visiblePoiList() {
-    // 当前列表实际显示的候选：交集过滤 + 最长通勤筛选 + 排序（导出与列表共用，所见即所得）
+    // 当前列表实际显示的候选：显示区域过滤 + 最长通勤筛选 + 排序（导出与列表共用，所见即所得）
     var list = Object.values(communities);
 
-    // 交集独占模式：只保留交集几何内的候选
-    if (intersectOnly && intersectGeom) {
-        list = list.filter(function (item) { return isInIntersection(item.poi.location); });
-    }
+    // 交集/差集独占显示：只保留当前显示区域内的候选
+    list = list.filter(function (item) { return inShownRegion(item.poi.location); });
 
     var filterVal = parseInt(document.getElementById('filterMax').value, 10);
     if (!isNaN(filterVal)) {
@@ -2098,6 +2520,7 @@ function exportGeoJSON() {
             properties: {
                 company: c.companyId,
                 mode: c.mode, minutes: c.minutes, approx: c.approx,
+                area_m2: Math.round(c.areaM2 != null ? c.areaM2 : circleAreaM2(c)),
                 center: comp ? [comp.lnglat.lng, comp.lnglat.lat] : null,
                 center_name: comp ? comp.name : null
             },
@@ -2162,6 +2585,7 @@ function saveState() {
             companySeq: companySeq,
             circleSeq: circleSeq,
             intersectOnly: intersectOnly,
+            diffOnly: diffOnly,
             companies: companyList().map(function (c) {
                 return { id: c.id, seq: c.seq, name: c.name, lng: c.lnglat.lng, lat: c.lnglat.lat, city: c.city || '' };
             }),
@@ -2178,10 +2602,14 @@ function restoreState() {
     if (!raw) { renderCompanySelects(); renderChips(); return; }
     try {
         var state = JSON.parse(raw);
-        // 交集开关先恢复：圈是异步加载的，每个圈加载完 afterCirclesChanged 都会重算交集
+        // 交集/差集开关先恢复：圈是异步加载的，每个圈加载完 afterCirclesChanged 都会重算
         if (state.intersectOnly) {
             intersectOnly = true;
             document.getElementById('onlyIntersect').checked = true;
+        }
+        if (state.diffOnly) {
+            diffOnly = true;
+            document.getElementById('onlyDiff').checked = true;
         }
         // 迁移老格式 {companies:{A:{...},B:{...}}, circles:[{companyId,mode,minutes}]}
         if (!state.v) {
@@ -2243,6 +2671,18 @@ function gcj02towgs84(lng, lat) {
     dlat = (dlat * 180.0) / ((a * (1 - ee)) / (magic * sqrtmagic) * pi);
     dlng = (dlng * 180.0) / (a / sqrtmagic * Math.cos(radlat) * pi);
     return [lng - dlng, lat - dlat];
+}
+/* WGS84 → GCJ02 近似转换（Mapbox 返回 WGS84，需转回高德坐标系显示） */
+function wgs84togcj02(lng, lat) {
+    var pi = 3.1415926535897932384626, ee = 0.00669342162296594323, a = 6378245.0;
+    var dlat = transformlat(lng - 105.0, lat - 35.0);
+    var dlng = transformlng(lng - 105.0, lat - 35.0);
+    var radlat = lat / 180.0 * pi;
+    var magic = 1 - ee * Math.sin(radlat) * Math.sin(radlat);
+    var sqrtmagic = Math.sqrt(magic);
+    dlat = (dlat * 180.0) / ((a * (1 - ee)) / (magic * sqrtmagic) * pi);
+    dlng = (dlng * 180.0) / (a / sqrtmagic * Math.cos(radlat) * pi);
+    return [lng + dlng, lat + dlat];
 }
 function transformlat(lng, lat) {
     var pi = 3.1415926535897932384626;
