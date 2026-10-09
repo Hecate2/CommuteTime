@@ -73,7 +73,7 @@ map_zoom: 12
 
 ## 地铁可达性（metro.html）
 
-`metro.html` 是姊妹页面，展示由 [shmetro-accessibility](https://github.com/Hecate2/shmetro-accessibility) 项目**本地预计算**的城市地铁 N×N 通勤时间矩阵（含进出站步行与候车，工作日早高峰口径）：
+`metro.html` 是姊妹页面，展示由 [shmetro-accessibility](https://github.com/Ignareo/shmetro-accessibility)（上游：[Hecate2/shmetro-accessibility](https://github.com/Hecate2/shmetro-accessibility)）项目**本地预计算**的城市地铁 N×N 通勤时间矩阵（含进出站步行与候车，工作日早高峰口径）：
 
 - **全城可达性**：所有站点按「到其他各站的平均通勤时间」上色，附排行榜。
 - **单站出发**：点击任一站点，按真实站间时间给全城站点上色，并画 15/30/45/60 分钟等值圈。
@@ -82,7 +82,14 @@ map_zoom: 12
 
 数据更新流程（需要高德 **Web 服务** key，与页面的 JS API key 不同）：
 
-1. 在 shmetro-accessibility 项目中跑爬虫，得到 `output/` 根目录下的 CSV（支持断点续爬）。
+数据由 fork 仓库 [Ignareo/shmetro-accessibility](https://github.com/Ignareo/shmetro-accessibility) 的爬虫产出。它与上游 [Hecate2/shmetro-accessibility](https://github.com/Hecate2/shmetro-accessibility) 的区别：
+
+- **爬虫与管线能力**：通用管线重构（`metro_accessibility_common.py`）、新增厦门/北京/成都/广州/武汉等城市变体、线路范围过滤、爬取进度与口径守卫、路线质量审计、组代表元爬取等增强；其中通用功能通过 PR 回馈上游，城市专属与本地数据改动留在 fork。
+- **数据产出**：fork 的 `output/` 才是本站数据的实际来源，上游仓库本身不维护这些预计算结果；本站只提交转换后的 `data/`，不复制其原始 CSV/SQLite。
+
+同步步骤：
+
+1. 在 shmetro-accessibility 项目（fork）中跑爬虫，得到 `output/` 根目录下的 CSV（支持断点续爬）。
 2. 运行转换脚本生成本站静态数据：
 
    ```bash
@@ -105,3 +112,4 @@ map_zoom: 12
 
 - 在线示例：https://zwssunny.github.io/
 - 源码仓库：https://github.com/zwssunny/zwssunny.github.io
+- `metro.html` 及其 `data/` 中的地铁通勤数据来自 [Hecate2/shmetro-accessibility](https://github.com/Hecate2/shmetro-accessibility)，实际同步用的是其 fork [Ignareo/shmetro-accessibility](https://github.com/Ignareo/shmetro-accessibility)（见上文「地铁可达性」一节的同步流程）。
