@@ -17,7 +17,7 @@
     h1 { font-size: 17px; margin-bottom: 10px; }
     h2 { font-size: 13px; color: #374151; margin: 14px 0 6px; }
     section { border-bottom: 1px dashed #e5e7eb; padding-bottom: 12px; }
-    input[type=text], input[type=number], select, textarea {
+    input[type=text], input[type=number], input[type=file], select, textarea {
         width: 100%; border: 1px solid #d1d5db; border-radius: 5px;
         padding: 4px 8px; font-size: 13px; margin: 3px 0; background: #fff;
         font-family: inherit;
@@ -119,12 +119,12 @@
     #progBar .track { width: 160px; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; flex-shrink: 0; }
     #progBar .fill { display: block; height: 100%; width: 0%; background: #2563eb; transition: width .2s; }
     #progBar button { height: 24px; font-size: 12px; padding: 0 10px; margin: 0; flex-shrink: 0; }
-    #keyModal {
+    #keyModal, #pkgModal {
         position: fixed; inset: 0; background: rgba(0,0,0,.45);
         display: none; align-items: center; justify-content: center; z-index: 1000;
         padding: 16px;
     }
-    #keyModal.show { display: flex; }
+    #keyModal.show, #pkgModal.show { display: flex; }
     .modal-box {
         background: #fff; border-radius: 10px; width: 100%; max-width: 420px;
         padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,.2);
@@ -186,6 +186,8 @@
             <div id="chipBox"></div>
             <div class="row" style="margin-top:6px">
                 <button id="shareBtn" class="ghost" title="复制链接：保存起点、等时圈设置与交集开关（不含密钥）">🔗 分享</button>
+                <button id="exportPkgBtn" class="ghost" title="导出方案包文件：包含全部起点、等时圈与圈几何，纯文本可分享（不含密钥与候选点）">⬇ 导出方案包</button>
+                <button id="importPkgBtn" class="ghost" title="粘贴或选择方案包文件，追加导入起点与等时圈（重复自动跳过）">⬆ 导入方案包</button>
             </div>
         </section>
 
@@ -293,6 +295,21 @@
         <div class="hint">也可以把密钥填入仓库的 <code>config.yaml</code> 后重新部署（公开仓库请谨慎，配置文件仍会被浏览器访问）。</div>
         <div class="actions">
             <button id="modalSaveBtn">保存并开始使用</button>
+        </div>
+    </div>
+</div>
+
+<div id="pkgModal" role="dialog" aria-modal="true" aria-labelledby="pkgModalTitle">
+    <div class="modal-box">
+        <h3 id="pkgModalTitle">导入方案包</h3>
+        <p class="hint">粘贴导出的方案包文本，或选择导出的 .txt 文件（两者等价）。将<b>追加</b>到当前方案：重复的起点与等时圈自动跳过，不会删除或覆盖现有内容。</p>
+        <textarea id="pkgText" placeholder="在此粘贴方案包文本（# 开头的说明行可保留可删除）…" style="height:120px"></textarea>
+        <div class="row">
+            <input type="file" id="pkgFile" accept=".txt,text/plain">
+        </div>
+        <div class="actions">
+            <button id="pkgCancelBtn" class="ghost">取消</button>
+            <button id="pkgOkBtn">导入</button>
         </div>
     </div>
 </div>
@@ -994,6 +1011,29 @@ function initApp() {
     document.getElementById('sortBy').onchange = renderPoiList;
 
     document.getElementById('shareBtn').onclick = shareLink;
+    document.getElementById('exportPkgBtn').onclick = exportPackage;
+    document.getElementById('importPkgBtn').onclick = showPkgModal;
+    document.getElementById('pkgOkBtn').onclick = onImportPackage;
+    document.getElementById('pkgCancelBtn').onclick = hidePkgModal;
+    // 点遮罩关闭；Esc 关闭（焦点在弹窗内时生效）
+    document.getElementById('pkgModal').addEventListener('click', function (e) {
+        if (e.target === this) hidePkgModal();
+    });
+    document.getElementById('pkgModal').addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' || e.key === 'Esc') { hidePkgModal(); e.preventDefault(); }
+    });
+    // 文件选择 → 读为文本填入粘贴框（与粘贴走同一条解析路径）
+    document.getElementById('pkgFile').onchange = function () {
+        var f = this.files && this.files[0];
+        if (!f) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+            document.getElementById('pkgText').value = String(reader.result || '');
+            toast('已读取文件「' + f.name + '」，点击「导入」确认');
+        };
+        reader.onerror = function () { toast('文件读取失败，请重试'); };
+        reader.readAsText(f);
+    };
 
     // 几何缓存先于恢复/深链接加载，使其重建时可直接命中
     loadGeomCache();
@@ -1272,18 +1312,19 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
         return;
     }
     var color = (opts && opts.color) || PALETTE[circleSeq % PALETTE.length];
+    var geomSig = circleSig(companyId, mode, minutes, precise);
     var circle = {
         id: ++circleSeq,
         companyId: companyId,
         label: circleLabel(comp, mode, minutes, !isTransit && !precise, precise, 0),
         mode: mode, minutes: minutes, color: color, approx: !isTransit && !precise, precise: precise,
+        geomSig: geomSig,
         polygons: [], overlays: [], visible: true, areaM2: 0
     };
     circles.push(circle);
     renderCircleList();
 
     // 几何缓存命中则直接装配，跳过 API 查询（与各分支尾巴完全相同的收尾动作）
-    var geomSig = circleSig(companyId, mode, minutes, precise);
     var hitPolys = fetchGeom(geomSig);
     if (hitPolys) {
         circle.polygons = hitPolys;
@@ -2578,23 +2619,142 @@ function downloadFile(content, filename, mime) {
 }
 
 /* ============ 方案保存 / 恢复（N起点，兼容老A/B格式） ============ */
+/* v3：相对 v2 增加 walkSpeed/rideSpeed 与每圈 precise —— 二者参与圈签名（circleSig），
+ * 缺失会导致恢复/导入时几何缓存 miss、白耗配额重查 */
+function buildState() {
+    return {
+        v: 3,
+        companySeq: companySeq,
+        circleSeq: circleSeq,
+        intersectOnly: intersectOnly,
+        diffOnly: diffOnly,
+        walkSpeed: currentWalkSpeed(),
+        rideSpeed: currentRideSpeed(),
+        companies: companyList().map(function (c) {
+            return { id: c.id, seq: c.seq, name: c.name, lng: c.lnglat.lng, lat: c.lnglat.lat, city: c.city || '' };
+        }),
+        circles: circles.map(function (c) {
+            return {
+                id: c.id, companyId: c.companyId, mode: c.mode, minutes: c.minutes,
+                color: c.color, visible: c.visible, precise: !!c.precise, geomSig: c.geomSig || ''
+            };
+        })
+    };
+}
+
 function saveState() {
     try {
-        var state = {
-            v: 2,
-            companySeq: companySeq,
-            circleSeq: circleSeq,
-            intersectOnly: intersectOnly,
-            diffOnly: diffOnly,
-            companies: companyList().map(function (c) {
-                return { id: c.id, seq: c.seq, name: c.name, lng: c.lnglat.lng, lat: c.lnglat.lat, city: c.city || '' };
-            }),
-            circles: circles.map(function (c) {
-                return { id: c.id, companyId: c.companyId, mode: c.mode, minutes: c.minutes, color: c.color, visible: c.visible };
-            })
-        };
-        localStorage.setItem('house_tool_state', JSON.stringify(state));
+        localStorage.setItem('house_tool_state', JSON.stringify(buildState()));
     } catch (e) { /* ignore */ }
+}
+
+/* 应用一份方案状态。
+ * merge=false：本机恢复（页面初始为空）——保留原序号/城市，圈按 400ms 节流回放；
+ * merge=true：方案包导入——追加语义：起点按坐标去重复用、圈按签名去重跳过、
+ *             id 一律重新分配，避免与现有对象冲突。
+ * 返回 {addedCompanies, addedCircles, skipped, queued}（addedCircles 在回放定时器里累计） */
+function applyState(state, merge) {
+    var res = { addedCompanies: 0, addedCircles: 0, skipped: 0, queued: 0 };
+    if (!state || typeof state !== 'object') return res;
+    // 交集/差集开关先恢复：圈是异步加载的，每个圈加载完 afterCirclesChanged 都会重算
+    if (state.intersectOnly !== undefined) {
+        intersectOnly = !!state.intersectOnly;
+        document.getElementById('onlyIntersect').checked = intersectOnly;
+    }
+    if (state.diffOnly !== undefined) {
+        diffOnly = !!state.diffOnly;
+        document.getElementById('onlyDiff').checked = diffOnly;
+    }
+    // 速度随方案走，必须先落输入框：circleSig 含速度，后建圈的签名才与几何缓存一致
+    if (state.walkSpeed) document.getElementById('walkSpeed').value = state.walkSpeed;
+    if (state.rideSpeed) document.getElementById('rideSpeed').value = state.rideSpeed;
+
+    // 迁移老格式 {companies:{A:{...},B:{...}}, circles:[{companyId,mode,minutes}]}（仅本机恢复可达）
+    if (!state.v) {
+        var idMap0 = {};
+        ['A', 'B'].forEach(function (s) {
+            var oc = state.companies && state.companies[s];
+            if (oc) {
+                // 存量“地图选点 …”名含经纬度，迁移为 起点N
+                var nm1 = isLegacyMapClickName(oc.name) ? nextDefaultOriginName() : oc.name;
+                var added0 = addCompany(new AMap.LngLat(oc.lng, oc.lat), nm1, true);
+                idMap0[s] = added0.id;
+            }
+        });
+        (state.circles || []).forEach(function (c, i) {
+            var nid = idMap0[c.companyId] || c.companyId;
+            setTimeout(function () { addCircleFrom(nid, c.mode, c.minutes, true); }, 400 * (i + 1));
+        });
+        renderCompanySelects();
+        return res;
+    }
+
+    // 起点：merge 时按坐标（5 位小数）匹配已有起点并复用其 id，否则新建并建立 包内id→新id 映射
+    var idMap = {};
+    (state.companies || []).forEach(function (c) {
+        if (!c || !isFinite(c.lng) || !isFinite(c.lat) || Math.abs(c.lat) > 90 || Math.abs(c.lng) > 180) {
+            res.skipped++;
+            return;
+        }
+        if (merge) {
+            var exist = null, key = c.lng.toFixed(5) + ',' + c.lat.toFixed(5);
+            Object.keys(companies).forEach(function (k) {
+                if (!exist && coordKey(companies[k].lnglat) === key) exist = companies[k];
+            });
+            if (exist) { idMap[c.id] = exist.id; return; }
+        }
+        var nm = isLegacyMapClickName(c.name) ? nextDefaultOriginName() : (c.name || nextDefaultOriginName());
+        var added = addCompany(new AMap.LngLat(c.lng, c.lat), nm, true);
+        idMap[c.id] = added.id;
+        res.addedCompanies++;
+        if (!merge) {
+            // 本机恢复保留原序号与城市名
+            if (c.seq != null) companies[added.id].seq = c.seq;
+            companies[added.id].city = c.city || '';
+        }
+    });
+    if (!merge) companySeq = Math.max(companySeq, state.companySeq || 0);
+
+    // 圈：merge 时按签名去重（含包内自身重复），非 merge 直接全部回放
+    var existingSigs = {};
+    if (merge) {
+        circles.forEach(function (c) {
+            existingSigs[c.geomSig || circleSig(c.companyId, c.mode, c.minutes, !!c.precise)] = true;
+        });
+    }
+    var savedCircles = state.circles || [];
+    var pending = 0, idx = 0;
+    savedCircles.forEach(function (c) {
+        if (!c) return;
+        var cid = idMap[c.companyId];
+        if (!cid) { res.skipped++; return; }   // 起点缺失（包内脏数据）
+        var preciseFlag = (c.precise !== undefined) ? !!c.precise : false;
+        var sig = circleSig(cid, c.mode, c.minutes, preciseFlag);
+        if (merge) {
+            if (existingSigs[sig]) { res.skipped++; return; }
+            existingSigs[sig] = true;
+        }
+        var opts = { color: c.color };
+        if (c.precise !== undefined) opts.precise = !!c.precise;   // v2 及更早无此字段 → 沿用勾选框
+        pending++;
+        var i = idx++;
+        setTimeout(function () {
+            var before = circles.length;
+            addCircleFrom(cid, c.mode, c.minutes, true, opts);
+            if (circles.length > before) {
+                res.addedCircles++;
+                var nc = circles[circles.length - 1];
+                // 兼容旧版：visible=false 或 useIntersect=false 都视为未勾选
+                if (c.visible === false || c.useIntersect === false) nc.visible = false;
+                renderCircleList();
+                applyAllVisibility();
+            }
+        }, 400 * (i + 1));
+    });
+    res.queued = pending;
+    if (!merge) circleSeq = Math.max(circleSeq, state.circleSeq || 0);
+    renderCompanySelects();
+    return res;
 }
 
 function restoreState() {
@@ -2602,62 +2762,127 @@ function restoreState() {
     if (!raw) { renderCompanySelects(); renderChips(); return; }
     try {
         var state = JSON.parse(raw);
-        // 交集/差集开关先恢复：圈是异步加载的，每个圈加载完 afterCirclesChanged 都会重算
-        if (state.intersectOnly) {
-            intersectOnly = true;
-            document.getElementById('onlyIntersect').checked = true;
-        }
-        if (state.diffOnly) {
-            diffOnly = true;
-            document.getElementById('onlyDiff').checked = true;
-        }
-        // 迁移老格式 {companies:{A:{...},B:{...}}, circles:[{companyId,mode,minutes}]}
-        if (!state.v) {
-            var idMap = {};
-            ['A', 'B'].forEach(function (s) {
-                var c = state.companies && state.companies[s];
-                if (c) {
-                    // 存量“地图选点 …”名含经纬度，迁移为 起点N
-                    var nm1 = isLegacyMapClickName(c.name) ? nextDefaultOriginName() : c.name;
-                    var added = addCompany(new AMap.LngLat(c.lng, c.lat), nm1, true);
-                    idMap[s] = added.id;
-                }
-            });
-            (state.circles || []).forEach(function (c, i) {
-                var nid = idMap[c.companyId] || c.companyId;
-                setTimeout(function () { addCircleFrom(nid, c.mode, c.minutes, true); }, 400 * (i + 1));
-            });
-        } else {
-            (state.companies || []).forEach(function (c) {
-                var nm2 = isLegacyMapClickName(c.name) ? nextDefaultOriginName() : c.name;
-                addCompany(new AMap.LngLat(c.lng, c.lat), nm2, true, c.id);
-                if (companies[c.id]) {
-                    companies[c.id].seq = c.seq;
-                    companies[c.id].city = c.city || '';
-                }
-            });
-            companySeq = state.companySeq || companySeq;
-            var savedCircles = state.circles || [];
-            savedCircles.forEach(function (c, i) {
-                setTimeout(function () {
-                    addCircleFrom(c.companyId, c.mode, c.minutes, true);
-                    var nc = circles[circles.length - 1];
-                    if (nc) {
-                        if (c.color) { nc.color = c.color; }
-                        // 兼容旧版：visible=false 或 useIntersect=false 都视为未勾选
-                        if (c.visible === false || c.useIntersect === false) nc.visible = false;
-                        renderCircleList();
-                        applyAllVisibility();
-                    }
-                }, 400 * (i + 1));
-            });
-            circleSeq = state.circleSeq || circleSeq;
-        }
-        renderCompanySelects();
-        if (state.circles && state.circles.length) {
-            setTimeout(function () { toast('已恢复上次的起点位置与等时圈'); }, 400 * state.circles.length + 800);
+        var circlesN = (state.circles || []).length;
+        applyState(state, false);
+        if (circlesN) {
+            setTimeout(function () { toast('已恢复上次的起点位置与等时圈'); }, 400 * circlesN + 800);
         }
     } catch (e) { renderCompanySelects(); /* ignore */ }
+}
+
+/* ============ 方案包导出 / 导入（纯文本 + lz-string URL 安全压缩） ============
+ * 包格式：
+ *   # 说明行（导入时剥掉，顺带抵抗聊天工具按宽度自动换行）
+ *   CTP1:<LZString.compressToEncodedURIComponent(JSON)>
+ * JSON = buildState()（v3） + geom（圈几何缓存原样内嵌，跨设备导入零配额秒恢复）。
+ * lz-string 不可用时降级输出裸 JSON；导入端相应「先试解压、失败直接 JSON.parse」。 */
+
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+/* 收集方案内各圈几何：查找用创建时签名（几何实际存储键），导出键用当前签名
+ * （= 携带的当前速度下，导入端回放时会计算出的键），保证导入端命中 */
+function collectGeomForExport(state) {
+    var out = {};
+    (state.circles || []).forEach(function (c) {
+        if (!companies[c.companyId]) return;
+        var storedKey = c.geomSig || circleSig(c.companyId, c.mode, c.minutes, !!c.precise);
+        var e = geomCache[storedKey];
+        if (!e || !e.g) return;
+        out[circleSig(c.companyId, c.mode, c.minutes, !!c.precise)] = { t: e.t, g: e.g };
+    });
+    return out;
+}
+
+function exportPackage() {
+    if (searchRunning || batchRunning) { toast('有任务正在进行，请稍候'); return; }
+    var state = buildState();
+    if (!state.companies.length) { toast('请先添加起点位置'); return; }
+    state.geom = collectGeomForExport(state);
+    var json = JSON.stringify(state);
+    var payload = (typeof LZString !== 'undefined')
+        ? 'CTP1:' + LZString.compressToEncodedURIComponent(json)
+        : json;   // lz-string CDN 不可用时降级为裸 JSON（仍是纯文本）
+    var d = new Date();
+    var stamp = d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) +
+        '-' + pad2(d.getHours()) + pad2(d.getMinutes());
+    var head = '# github.com/Ignareo/CommuteTime 方案包 v1\n# 导出时间: ' + fmtTime(d.getTime()) +
+        ' | 起点 ' + state.companies.length + ' | 等时圈 ' + state.circles.length +
+        ' | 圈几何 ' + Object.keys(state.geom).length + ' 条（含步行/骑行速度与交集开关，不含密钥与候选点）\n';
+    var text = head + payload + '\n';
+    downloadFile(text, 'commute-plan-' + stamp + '.txt', 'text/plain');
+    copyText(text, function (ok) {
+        toast(ok ? '方案包已下载并复制到剪贴板，可直接粘贴给对方'
+                 : '方案包已下载（复制到剪贴板失败，可打开文件手动复制）', 4000);
+    });
+}
+
+/* 解析方案包文本：剥 # 说明行/空行 → 拼回单行 → 按前缀解压或裸 JSON 兜底；失败返回 null */
+function parsePackage(raw) {
+    var text = String(raw == null ? '' : raw).replace(/^\ufeff/, '').trim();
+    if (!text) return null;
+    var body = text.split(/\r?\n/).map(function (l) { return l.trim(); })
+        .filter(function (l) { return l && l.charAt(0) !== '#'; }).join('');
+    if (!body) return null;
+    var json = body;
+    if (body.indexOf('CTP1:') === 0) {
+        if (typeof LZString === 'undefined') return null;
+        // 载荷为纯 ASCII 字母表，剥掉一切空白（抵抗聊天工具换行/加空格）
+        var b64 = body.slice(5).replace(/\s+/g, '');
+        try { json = LZString.decompressFromEncodedURIComponent(b64); } catch (e) { json = null; }
+        if (!json) return null;
+    }
+    try {
+        var o = JSON.parse(json);
+        if (!o || typeof o !== 'object') return null;
+        if (!Array.isArray(o.companies) || !Array.isArray(o.circles)) return null;
+        return o;
+    } catch (e) { return null; }
+}
+
+/* 方案包几何并入本地圈缓存：条目已是压缩串原样收编，沿用 TTL/LRU 上限 */
+function mergeGeomCache(geomMap) {
+    if (!geomMap || typeof geomMap !== 'object') return 0;
+    var added = 0, now = Date.now();
+    Object.keys(geomMap).forEach(function (k) {
+        var e = geomMap[k];
+        if (!e || !e.g || !e.t || (now - e.t) > GEOM_CACHE_TTL) return;
+        if (geomCache[k]) return;                 // 本地已有则保留本地版本
+        geomCache[k] = { t: now, g: e.g };        // 存入时间以本次导入为准
+        added++;
+    });
+    if (!added) return 0;
+    var keys = Object.keys(geomCache).sort(function (a, b) { return geomCache[a].t - geomCache[b].t; });
+    while (keys.length > GEOM_CACHE_MAX) { delete geomCache[keys.shift()]; }
+    persistGeomCache();
+    return added;
+}
+
+function showPkgModal() {
+    if (searchRunning || batchRunning) { toast('有任务正在进行，请稍候'); return; }
+    document.getElementById('pkgText').value = '';
+    document.getElementById('pkgFile').value = '';
+    document.getElementById('pkgModal').classList.add('show');
+    setTimeout(function () { document.getElementById('pkgText').focus(); }, 0);
+}
+function hidePkgModal() {
+    document.getElementById('pkgModal').classList.remove('show');
+}
+
+function onImportPackage() {
+    if (searchRunning || batchRunning) { toast('有任务正在进行，请稍候'); return; }
+    var state = parsePackage(document.getElementById('pkgText').value);
+    if (!state) {
+        toast('方案包解析失败：请确认文本完整（应为 CTP1: 开头的一行，或裸 JSON）', 4500);
+        return;
+    }
+    hidePkgModal();
+    var geomN = mergeGeomCache(state.geom);
+    var res = applyState(state, true);
+    setTimeout(function () {
+        saveState();
+        toast('导入完成：起点 +' + res.addedCompanies + '，等时圈 +' + res.addedCircles +
+            '，跳过重复 ' + res.skipped + (geomN ? '，并入圈几何 ' + geomN + ' 条' : ''), 4500);
+    }, 400 * res.queued + 700);
 }
 
 /* GCJ02 → WGS84 近似转换（中国大陆范围内有效） */
