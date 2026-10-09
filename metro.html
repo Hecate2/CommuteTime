@@ -193,18 +193,6 @@
             <h1>🚇 地铁可达性 · 等时圈通勤工具 <a class="cross-link" href="index.html">→ 分析我的通勤</a></h1>
 
             <section>
-                <details>
-                    <summary>高德密钥设置</summary>
-                    <div style="margin-top:6px">
-                        <input type="text" id="keyInput" placeholder="JS API Key（Web端开发者类型）">
-                        <input type="text" id="codeInput" placeholder="安全密钥 securityJsCode">
-                        <button id="saveKeyBtn" class="ghost">保存并刷新</button>
-                        <div class="hint">申请：console.amap.com → 应用管理 → 创建 Key（服务平台选「Web端(JS API)」）。密钥保存在浏览器本地，不会上传服务器。</div>
-                    </div>
-                </details>
-            </section>
-
-            <section>
                 <h2>城市</h2>
                 <select id="citySelect"><option value="">加载中…</option></select>
                 <div class="hint" id="cityHint"></div>
@@ -256,7 +244,7 @@
                 <div id="destList"></div>
             </section>
         </div>
-        <div id="panelFooter">数据加载后可查看口径声明。</div>
+        <div id="panelFooter"><span id="footerText">数据加载后可查看口径声明。</span><button id="rekeyBtn" class="link-btn" type="button">重新配置密钥</button></div>
     </aside>
     <div id="container">
         <button id="mobileBackBtn">← 返回全城视图</button>
@@ -327,9 +315,6 @@ function initKeys(cfgKey, cfgCode) {
     AMAP_KEY = storedKey || cfgKey || '';
     AMAP_CODE = storedCode || cfgCode || '';
 
-    document.getElementById('keyInput').value = AMAP_KEY;
-    document.getElementById('codeInput').value = AMAP_CODE;
-
     if (!AMAP_KEY || !AMAP_CODE || AMAP_KEY === PLACEHOLDER_KEY) {
         showKeyModal();
         initDataOnly();   // 无密钥也可浏览排行榜与单站列表，地图区显示占位层
@@ -345,12 +330,6 @@ function saveKeys(k, c) {
     location.reload();
     return true;
 }
-
-document.getElementById('saveKeyBtn').onclick = function () {
-    var k = document.getElementById('keyInput').value.trim();
-    var c = document.getElementById('codeInput').value.trim();
-    saveKeys(k, c);
-};
 
 function showKeyModal() {
     document.getElementById('keyModal').classList.add('show');
@@ -381,6 +360,7 @@ document.getElementById('modalSaveBtn').onclick = function () {
 
 document.getElementById('modalSkipBtn').onclick = function () { hideKeyModal(); };
 document.getElementById('goConfigBtn').onclick = showKeyModal;
+document.getElementById('rekeyBtn').onclick = showKeyModal;   // 页脚兜底入口，弹窗不回显已有密钥
 /* 面板 grabber：点击循环三档（默认→expanded→collapsed→默认）；触摸拖拽实时调高、松手吸附 */
 var grabberSuppressClick = false;
 document.getElementById('panelGrabber').onclick = function () {
@@ -780,7 +760,7 @@ function selectCity(city) {
 }
 
 function renderFooter() {
-    var el = document.getElementById('panelFooter');
+    var el = document.getElementById('footerText');
     if (!meta) { el.textContent = '数据加载后可查看口径声明。'; return; }
     var dep = meta.departure ? ('出发口径：' + meta.departure + '。') : '';
     var gen = meta.generated_at ? ('生成时间：' + meta.generated_at + '。') : '';

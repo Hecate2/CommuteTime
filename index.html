@@ -167,19 +167,6 @@
         </div>
 
         <section>
-            <details>
-                <summary>密钥设置</summary>
-                <div style="margin-top:6px">
-                    <input type="text" id="keyInput" placeholder="高德JS API Key（Web端开发者类型）">
-                    <input type="text" id="codeInput" placeholder="高德安全密钥 securityJsCode">
-                    <input type="text" id="mapboxInput" placeholder="Mapbox Token（驾车/骑行/步行(Mapbox)圈）">
-                    <button id="saveKeyBtn" class="ghost">保存并刷新</button>
-                    <div class="hint">申请：console.amap.com → 应用管理 → 创建 Key（服务平台选「Web端(JS API)」）。Mapbox Token 去 account.mapbox.com 申请（公开 pk token 即可）。密钥保存在浏览器本地，不会上传服务器。</div>
-                </div>
-            </details>
-        </section>
-
-        <section>
             <h2>① 起点位置（可添加任意多个，搜索/点图即新建）</h2>
             <input type="text" id="companyInput" placeholder="输入地点名 / 地址搜索新建，或直接点击地图新建">
             <div class="hint">每次搜索选中，或点击地图后确认「设为起点」，都会创建一个新的出发地点。</div>
@@ -214,35 +201,33 @@
                 <label style="flex:0 0 auto;font-size:12px;color:#374151;display:flex;align-items:center;gap:4px;white-space:nowrap">
                     <input type="checkbox" id="preciseChk" style="width:auto;height:auto;margin:0"> 精确路网圈（步行/骑行）
                 </label>
-                <label class="hint" style="flex:0 0 auto;margin:0">步行</label>
-                <input type="number" id="walkSpeed" min="1" max="10" step="0.1" value="4.5" style="flex:0 0 56px" title="步行平均速度 km/h">
-                <label class="hint" style="flex:0 0 auto;margin:0">骑行</label>
-                <input type="number" id="rideSpeed" min="3" max="30" step="0.5" value="9" style="flex:0 0 56px" title="骑行平均速度 km/h">
-                <label class="hint" style="flex:0 0 auto;margin:0">km/h</label>
             </div>
-            <div class="hint">「精确路网圈」沿 24 个方向用真实步行/骑行路径逐点二分边界（约 200 次调用、30~60 秒，更准）；不勾选则按上方速度画直线近似圈，秒出。</div>
+            <div class="hint">精确圈沿真实路径逐方向二分边界（约 200 次调用、30~60 秒，更准）；不勾选按 config.yaml 配速画直线近似圈，秒出。</div>
             <div id="circleList"></div>
-            <div class="row" style="margin-top:6px">
-                <button id="selectAllBtn" class="ghost">全选 / 全不选</button>
-                <input type="number" id="batchMinutes" min="1" max="120" placeholder="分钟" style="flex:0 0 70px">
-                <button id="retimeBtn" class="ghost">选中圈改为该时长</button>
-            </div>
-            <div class="hint" style="margin-top:4px">本地圈缓存：<span id="geomCacheInfo">…</span></div>
-            <div class="intersect-bar">
-                <label><input type="checkbox" id="onlyIntersect"> 只显示所选圈的交集</label>
-                <label><input type="checkbox" id="onlyDiff"> 只显示所选两圈的差集</label>
-                <button id="exportIntersectBtn" class="ghost" style="height:24px;font-size:12px">导出交集 GeoJSON</button>
-                <span id="intersectInfo"></span>
-                <span id="diffInfo"></span>
-            </div>
-            <div class="hint">勾选=显示该圈，未勾选的圈会被隐藏，也不参与交集/差集计算与导出；交集开关显示所有勾选圈的公共部分（灰色），差集开关需刚好勾选2个圈、用各自颜色显示互不覆盖的部分，两开关可同时开，列表与批量计算跟随所显示区域。</div>
-            <div class="row" style="margin-top:8px">
-                <select id="coord" style="flex:0 0 110px">
-                    <option value="WGS84">WGS84</option>
-                    <option value="GCJ02">GCJ02</option>
-                </select>
-                <button id="exportBtn" class="ghost">导出选中圈 GeoJSON</button>
-            </div>
+            <details style="margin-top:8px">
+                <summary>高级：批量改时长 · 交集差集 · 导出</summary>
+                <div class="row" style="margin-top:6px">
+                    <button id="selectAllBtn" class="ghost">全选 / 全不选</button>
+                    <input type="number" id="batchMinutes" min="1" max="120" placeholder="分钟" style="flex:0 0 70px">
+                    <button id="retimeBtn" class="ghost">选中圈改为该时长</button>
+                </div>
+                <div class="intersect-bar">
+                    <label><input type="checkbox" id="onlyIntersect"> 只显示所选圈的交集</label>
+                    <label><input type="checkbox" id="onlyDiff"> 只显示所选两圈的差集</label>
+                    <button id="exportIntersectBtn" class="ghost" style="height:24px;font-size:12px">导出交集 GeoJSON</button>
+                    <span id="intersectInfo"></span>
+                    <span id="diffInfo"></span>
+                </div>
+                <div class="hint">未勾选的圈不参与交集/差集与导出；差集需刚好勾选 2 个圈，列表与批量计算跟随所显示区域。</div>
+                <div class="row" style="margin-top:8px">
+                    <select id="coord" style="flex:0 0 110px">
+                        <option value="WGS84">WGS84</option>
+                        <option value="GCJ02">GCJ02</option>
+                    </select>
+                    <button id="exportBtn" class="ghost">导出选中圈 GeoJSON</button>
+                </div>
+                <div class="hint" style="margin-top:4px">本地圈缓存：<span id="geomCacheInfo">…</span></div>
+            </details>
         </section>
 
         <section>
@@ -273,7 +258,8 @@
         </section>
 
         <footer>
-            说明：步行/骑行默认按可调速度画直线近似圈（默认步行 4.5km/h、骑行 9 km/h），勾选「精确路网圈」后改用真实路径逐方向二分（慢但准）；<b>驾车/骑行/步行(Mapbox)</b>调用 Mapbox 等时圈接口（需自备 Token，上限 60 分钟）；地铁/公交圈来自高德到达圈（不含等车与换乘耗时），以「真实通勤时间」为最终依据。候选地点来自高德 POI 或手动导入。配色：候选点按真实通勤时间 ≤30分钟 绿，≤45 黄，≤60 橙，&gt;60 红；等时圈边界按设定时长绘制（等时圈设定时长），两者口径不同。
+            说明：步行/骑行不勾选「精确路网圈」时按 config.yaml 配速画直线近似圈，勾选后用真实路径逐方向二分（慢但准）；<b>驾车/骑行/步行(Mapbox)</b>调用 Mapbox 等时圈接口（需在 config.yaml 配置 Token，上限 60 分钟）；地铁/公交圈来自高德到达圈（不含等车与换乘耗时），以「真实通勤时间」为最终依据。配色：候选点按真实通勤时间 ≤30分钟 绿，≤45 黄，≤60 橙，&gt;60 红；等时圈边界按设定时长绘制，两者口径不同。<br>
+            <a href="#" id="rekeyLink" style="color:#9ca3af">重新配置密钥</a>
         </footer>
     </aside>
     <div id="container"></div>
@@ -337,6 +323,8 @@ var MAPBOX_TOKEN = '';
 var PLACEHOLDER_KEY = 'YOUR_KEY_HERE';
 var MAP_CENTER = [121.4997, 31.2397];   // 默认上海陆家嘴（GCJ-02）
 var MAP_ZOOM = 12;
+var WALK_SPEED = 4.5;   // 近似步行圈配速 km/h，config.yaml walk_speed 可覆盖
+var RIDE_SPEED = 9;     // 近似骑行圈配速 km/h，config.yaml ride_speed 可覆盖
 
 function parseMapView(centerStr, zoomStr) {
     if (centerStr) {
@@ -358,10 +346,6 @@ function initKeys(cfgKey, cfgCode, cfgMapbox) {
     AMAP_CODE = storedCode || cfgCode || '';
     MAPBOX_TOKEN = localStorage.getItem('mapbox_token') || cfgMapbox || '';
 
-    document.getElementById('keyInput').value = AMAP_KEY;
-    document.getElementById('codeInput').value = AMAP_CODE;
-    document.getElementById('mapboxInput').value = MAPBOX_TOKEN;
-
     if (!AMAP_KEY || !AMAP_CODE || AMAP_KEY === PLACEHOLDER_KEY) {
         showKeyModal();
     } else {
@@ -377,13 +361,10 @@ function saveKeys(k, c) {
     return true;
 }
 
-document.getElementById('saveKeyBtn').onclick = function () {
-    var k = document.getElementById('keyInput').value.trim();
-    var c = document.getElementById('codeInput').value.trim();
-    var m = document.getElementById('mapboxInput').value.trim();
-    if (m) localStorage.setItem('mapbox_token', m);
-    else localStorage.removeItem('mapbox_token');
-    saveKeys(k, c);
+/* 页脚「重新配置密钥」：换 key 的兜底入口，弹窗输入框不回显已有密钥 */
+document.getElementById('rekeyLink').onclick = function (e) {
+    e.preventDefault();
+    showKeyModal();
 };
 
 function showKeyModal() {
@@ -415,12 +396,20 @@ document.getElementById('modalSaveBtn').onclick = function () {
     if (saveKeys(k, c)) hideKeyModal();
 };
 
+/* 配速来自 config.yaml（开发者配置，页面无入口）；缺省/越界保持默认值 */
+function applySpeedConfig(walkVal, rideVal) {
+    var w = parseFloat(walkVal), r = parseFloat(rideVal);
+    if (isFinite(w) && w > 0 && w <= 20) WALK_SPEED = w;
+    if (isFinite(r) && r > 0 && r <= 40) RIDE_SPEED = r;
+}
+
 /* 先读配置再加载地图 */
 fetch('config.yaml')
     .then(function (r) { return r.text(); })
     .then(function (text) {
         var cfg = parseYAML(text);
         parseMapView(cfg.map_center, cfg.map_zoom);
+        applySpeedConfig(cfg.walk_speed, cfg.ride_speed);
         initKeys(cfg.amap_key, cfg.amap_code, cfg.mapbox_token);
     })
     .catch(function () {
@@ -637,12 +626,10 @@ function schedulePersistCache() {
 
 function coordKey(l) { return l.lng.toFixed(5) + ',' + l.lat.toFixed(5); }
 function currentWalkSpeed() {
-    var v = parseFloat(document.getElementById('walkSpeed').value);
-    return (isFinite(v) && v > 0 && v <= 20) ? v : 4.5;
+    return (isFinite(WALK_SPEED) && WALK_SPEED > 0 && WALK_SPEED <= 20) ? WALK_SPEED : 4.5;
 }
 function currentRideSpeed() {
-    var v = parseFloat(document.getElementById('rideSpeed').value);
-    return (isFinite(v) && v > 0 && v <= 40) ? v : 9;
+    return (isFinite(RIDE_SPEED) && RIDE_SPEED > 0 && RIDE_SPEED <= 40) ? RIDE_SPEED : 9;
 }
 
 /* 闭合折线三点滑动平均，弱化二分边界的锯齿 */
@@ -1383,7 +1370,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
     } else if (isMapbox) {
         // Mapbox 等时圈：WGS84 请求，返回 GeoJSON（WGS84）再转回 GCJ02 显示
         if (!MAPBOX_TOKEN) {
-            toast('请先在「高德密钥设置」里填写 Mapbox Token');
+            toast('需要在 config.yaml 配置 mapbox_token 后刷新');
             removeCircle(circle.id);
             return;
         }
@@ -2665,9 +2652,14 @@ function applyState(state, merge) {
         diffOnly = !!state.diffOnly;
         document.getElementById('onlyDiff').checked = diffOnly;
     }
-    // 速度随方案走，必须先落输入框：circleSig 含速度，后建圈的签名才与几何缓存一致
-    if (state.walkSpeed) document.getElementById('walkSpeed').value = state.walkSpeed;
-    if (state.rideSpeed) document.getElementById('rideSpeed').value = state.rideSpeed;
+    // 方案包导入（merge）时速度随包走：circleSig 含速度，先落全局配速变量，
+    // 回放圈的签名才与包内嵌的几何缓存一致（零配额恢复）。
+    // 本机恢复（!merge）则不应用存档速度——配速的唯一来源是 config.yaml，
+    // 避免旧 localStorage 存档静默盖过开发者配置。
+    if (merge) {
+        if (state.walkSpeed) applySpeedConfig(state.walkSpeed, null);
+        if (state.rideSpeed) applySpeedConfig(null, state.rideSpeed);
+    }
 
     // 迁移老格式 {companies:{A:{...},B:{...}}, circles:[{companyId,mode,minutes}]}（仅本机恢复可达）
     if (!state.v) {
