@@ -927,6 +927,22 @@ var diffGeomB = null;  // 圈B有、A无（B色显示）
 var batchRunning = false;
 var batchCtrl = null;
 var searchRunning = false;
+var circlePending = 0;   // 正在异步生成几何的圈数（精确/公交/Mapbox）
+var precisePending = 0;  // 其中精确圈数：重建时长时需等它完成再继续
+
+function beginCircleWork(circle, precise) {
+    circle._busy = true;
+    circlePending++;
+    if (precise) precisePending++;
+    updateActionStates();
+}
+function endCircleWork(circle) {
+    if (!circle._busy) return;
+    circle._busy = false;
+    circlePending = Math.max(0, circlePending - 1);
+    if (circle.precise) precisePending = Math.max(0, precisePending - 1);
+    updateActionStates();
+}
 
 function updatePanelSummary() {
     var el = document.getElementById('panelSummary');
@@ -936,13 +952,24 @@ function updatePanelSummary() {
 
 function updateActionStates() {
     var count = Object.keys(communities).length;
+    // 检索/批量与圈构建互斥：共享 #progBar，且新增圈完成时会清空 POI 候选。
+    // 但普通圈可以连续添加（互不共享进度条），只有精确圈需要独占按钮。
+    var taskBusy = searchRunning || batchRunning;
+    var anyBusy = taskBusy || circlePending > 0;
+    var busyHint = '有任务正在进行，请稍候';
+    var addBtn = document.getElementById('addCircleBtn');
+    addBtn.disabled = taskBusy || precisePending > 0;
+    addBtn.title = taskBusy ? busyHint : '';
+    var retimeBtn = document.getElementById('retimeBtn');
+    retimeBtn.disabled = !circles.length || anyBusy;
+    retimeBtn.title = !circles.length ? '请先添加等时圈' : (anyBusy ? busyHint : '');
     var batchBtn = document.getElementById('batchBtn');
-    batchBtn.disabled = !count || batchRunning;
-    batchBtn.title = count ? '' : '请先检索或导入候选地点';
+    batchBtn.disabled = !count || anyBusy;
+    batchBtn.title = !count ? '请先检索或导入候选地点' : (anyBusy ? busyHint : '');
     var searchBtn = document.getElementById('searchPoiBtn');
     var hasLoaded = circles.some(function (c) { return c.visible !== false && c.polygons && c.polygons.length; });
-    searchBtn.disabled = !hasLoaded || searchRunning;
-    searchBtn.title = hasLoaded ? '' : '请先添加至少一个等时圈';
+    searchBtn.disabled = !hasLoaded || anyBusy;
+    searchBtn.title = !hasLoaded ? '请先添加至少一个等时圈' : (anyBusy ? busyHint : '');
     updatePanelSummary();
 }
 updateActionStates();
@@ -1318,6 +1345,7 @@ function renderGeomCacheInfo() {
 
 /* ============ 等时圈 ============ */
 function onAddCircle() {
+    if (searchRunning || batchRunning || precisePending > 0) { toast('有任务正在进行，请稍候'); return; }
     var companyId = document.getElementById('circleCompany').value;
     var mode = document.getElementById('mode').value;
     var minutes = parseInt(document.getElementById('minutes').value, 10);
@@ -1336,6 +1364,7 @@ function onSelectAll() {
 
 // 把所有勾选的圈按原起点/方式/颜色重建成指定时长（精确圈保持精确）
 function onRetimeSelected() {
+    if (searchRunning || batchRunning || circlePending > 0) { toast('有任务正在进行，请稍候'); return; }
     var m = parseInt(document.getElementById('batchMinutes').value, 10);
     if (!m || m < 1 || m > 120) { toast('请输入 1-120 分钟'); return; }
     var sels = circles.filter(function (c) { return c.visible !== false; });
@@ -1348,8 +1377,8 @@ function onRetimeSelected() {
     var i = 0;
     (function next() {
         if (i >= sels.length) return;
-        // 精确圈构建耗时且独占按钮/进度条，等其完成再建下一个
-        if (document.getElementById('addCircleBtn').disabled) { setTimeout(next, 1000); return; }
+        // 精确圈构建耗时且独占进度条，等其完成再建下一个
+        if (precisePending > 0) { setTimeout(next, 1000); return; }
         var old = sels[i++];
         var spec = { companyId: old.companyId, mode: old.mode, color: old.color, precise: old.precise };
         removeCircle(old.id);
@@ -1398,11 +1427,10 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
     if (precise) {
         // 精确路网圈：真实步行/骑行路径逐方向二分边界（消耗配额，约 200 次调用）
         var ctrl = { aborted: false };
-        var addBtn = document.getElementById('addCircleBtn');
-        addBtn.disabled = true;
+        beginCircleWork(circle, true);
         function onPreciseDone(ring, cancelled) {
+            endCircleWork(circle);
             progressHide();
-            addBtn.disabled = false;
             if (cancelled) {
                 removeCircle(circle.id);
                 if (!skipSave) saveState();
@@ -1446,6 +1474,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
             removeCircle(circle.id);
             return;
         }
+        beginCircleWork(circle, false);
         (function (c, profile) {
             toast('Mapbox 等时圈查询中…');
             var wgs = gcj02towgs84(comp.lnglat.lng, comp.lnglat.lat);
@@ -1472,6 +1501,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
                     });
                 });
                 if (!c.polygons.length) {
+                    endCircleWork(c);
                     toast('Mapbox 无返回数据（Token/配额/网络原因），可稍后重试');
                     removeCircle(c.id);
                     return;
@@ -1480,13 +1510,16 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
                 refreshCircleLabel(c);
                 fitCircle(c);
                 afterCirclesChanged(false);
+                endCircleWork(c);
             }).catch(function () {
+                endCircleWork(c);
                 toast('Mapbox 查询失败（Token/配额/网络原因），可稍后重试');
                 removeCircle(c.id);
             });
         })(circle, mode.slice(7));
     } else {
         toast('到达圈查询中…');
+        beginCircleWork(circle, false);
         amapRequest('到达圈', {
             run: function (cb) {
                 // 每个圈独立实例，避免并发查询互相取消
@@ -1498,6 +1531,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
             isSuccess: function (s, result) { return !!(result && result.bounds && result.bounds.length); },
             onDone: function (status, result) {
                 if (status !== 'success') {
+                    endCircleWork(circle);
                     toast(status === 'empty'
                         ? '该区域暂无公交到达圈数据'
                         : '到达圈查询失败（配额或网络原因），可稍后重试');
@@ -1514,6 +1548,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
                     }
                 }
                 if (!circle.polygons.length) {
+                    endCircleWork(circle);
                     toast('到达圈数据异常（无可用多边形），请重试');
                     removeCircle(circle.id);
                     return;
@@ -1522,6 +1557,7 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
                 refreshCircleLabel(circle);
                 fitCircle(circle);
                 afterCirclesChanged(false);
+                endCircleWork(circle);
             }
         });
     }
@@ -2115,7 +2151,7 @@ function searchCommunities() {
     // 只检索勾选（显示）的圈；未加载完几何的圈跳过，避免用无效外接矩形检索
     var queue = circles.filter(function (c) { return c.visible !== false && c.polygons && c.polygons.length; });
     if (!queue.length) { toast('请先勾选至少一个已加载的等时圈'); return; }
-    if (searchRunning || batchRunning) { toast('有任务正在进行，请稍候'); return; }
+    if (searchRunning || batchRunning || circlePending > 0) { toast('有任务正在进行，请稍候'); return; }
     // 按圈的外接矩形检索（调用次数少、不触限流），再用几何关系精确过滤到多边形内（各圈结果取并集）
     var before = Object.keys(communities).length;
     var total = queue.length, doneCount = 0;
@@ -2417,6 +2453,7 @@ function openInfo(item) {
 
 function batchCommute() {
     if (batchRunning) { toast('批量计算正在进行，请稍候'); return; }
+    if (searchRunning || circlePending > 0) { toast('有任务正在进行，请稍候'); return; }
     var list = Object.values(communities);
     if (!list.length) { toast('请先检索或导入候选地点'); return; }
     // 交集/差集独占模式下只算显示区域内的候选（省配额，且与列表所见一致）；
@@ -2889,7 +2926,7 @@ function collectGeomForExport(state) {
 }
 
 function exportPackage() {
-    if (searchRunning || batchRunning) { toast('有任务正在进行，请稍候'); return; }
+    if (searchRunning || batchRunning || circlePending > 0) { toast('有任务正在进行，请稍候'); return; }
     var state = buildState();
     if (!state.companies.length) { toast('请先添加起点位置'); return; }
     state.geom = collectGeomForExport(state);
@@ -2964,7 +3001,7 @@ function hidePkgModal() {
 }
 
 function onImportPackage() {
-    if (searchRunning || batchRunning) { toast('有任务正在进行，请稍候'); return; }
+    if (searchRunning || batchRunning || circlePending > 0) { toast('有任务正在进行，请稍候'); return; }
     var state = parsePackage(document.getElementById('pkgText').value);
     if (!state) {
         toast('方案包解析失败：请确认文本完整（应为 CTP1: 开头的一行，或裸 JSON）', 4500);
