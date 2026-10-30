@@ -1127,7 +1127,7 @@ function initApp() {
 }
 
 /* ============ 起点位置（任意多个） ============ */
-function addCompany(lnglat, name, skipSave, keepId) {
+function addCompany(lnglat, name, skipSave, keepId, opts) {
     companySeq++;
     var id = (keepId != null) ? keepId : ('S' + companySeq);
     // keepId 恢复时保证 companySeq 不回退
@@ -1136,29 +1136,35 @@ function addCompany(lnglat, name, skipSave, keepId) {
         if (m) companySeq = Math.max(companySeq, parseInt(m[1], 10));
     }
     var seq = companySeq;
+    var noCenter = !!(opts && opts.noCenter);
+    var knownCity = (opts && typeof opts.city === 'string') ? opts.city : '';
     var marker = new AMap.Marker({
         map: map, position: lnglat, zIndex: 200,
         label: { content: '📍 ' + escapeHtml(name), direction: 'top' }
     });
-    var item = { id: id, seq: seq, name: name, lnglat: lnglat, marker: marker, city: '' };
+    var item = { id: id, seq: seq, name: name, lnglat: lnglat, marker: marker, city: knownCity };
     companies[id] = item;
     renderChips();
     renderCompanySelects();
-    map.setZoomAndCenter(13, lnglat);
+    if (!cityName && knownCity) cityName = knownCity;
+    if (!noCenter) map.setZoomAndCenter(13, lnglat);
 
-    // 逆地理取城市名，每个起点独立保存（跨城时公交规划需要各自 city）
-    (function (mine) {
-        amapRequest('逆地理编码', {
-            run: function (cb) { new AMap.Geocoder().getAddress(lnglat, cb); },
-            isSuccess: function (s, r) { return s === 'complete' && !!(r && r.regeocode); },
-            onDone: function (status, result) {
-                if (status !== 'success') return;
-                var ac = result.regeocode.addressComponent;
-                mine.city = (typeof ac.city === 'string' && ac.city) ? ac.city : ac.province;
-                if (!cityName && mine.city) cityName = mine.city;
-            }
-        });
-    })(item);
+    // 逆地理取城市名，每个起点独立保存（跨城时公交规划需要各自 city）；
+    // 恢复/导入时城市已随方案保存，跳过请求，省 N 次配额也避免启动期镜头连跳
+    if (!knownCity) {
+        (function (mine) {
+            amapRequest('逆地理编码', {
+                run: function (cb) { new AMap.Geocoder().getAddress(lnglat, cb); },
+                isSuccess: function (s, r) { return s === 'complete' && !!(r && r.regeocode); },
+                onDone: function (status, result) {
+                    if (status !== 'success') return;
+                    var ac = result.regeocode.addressComponent;
+                    mine.city = (typeof ac.city === 'string' && ac.city) ? ac.city : ac.province;
+                    if (!cityName && mine.city) cityName = mine.city;
+                }
+            });
+        })(item);
+    }
     if (!skipSave) saveState();
     return item;
 }
@@ -2795,7 +2801,7 @@ function applyState(state, merge) {
     }
 
     // 起点：merge 时按坐标（5 位小数）匹配已有起点并复用其 id，否则新建并建立 包内id→新id 映射
-    var idMap = {};
+    var idMap = {}, lastAdded = null;
     (state.companies || []).forEach(function (c) {
         if (!c || !isFinite(c.lng) || !isFinite(c.lat) || Math.abs(c.lat) > 90 || Math.abs(c.lng) > 180) {
             res.skipped++;
@@ -2809,8 +2815,10 @@ function applyState(state, merge) {
             if (exist) { idMap[c.id] = exist.id; return; }
         }
         var nm = isLegacyMapClickName(c.name) ? nextDefaultOriginName() : (c.name || nextDefaultOriginName());
-        var added = addCompany(new AMap.LngLat(c.lng, c.lat), nm, true);
+        // 恢复/导入的起点城市已随状态保存：不逐点居中、不重复请求逆地理
+        var added = addCompany(new AMap.LngLat(c.lng, c.lat), nm, true, null, { noCenter: true, city: c.city });
         idMap[c.id] = added.id;
+        lastAdded = added;
         res.addedCompanies++;
         if (!merge) {
             // 本机恢复保留原序号与城市名
@@ -2818,6 +2826,8 @@ function applyState(state, merge) {
             companies[added.id].city = c.city || '';
         }
     });
+    // 批量恢复只在末尾摆一次镜头（旧行为是每个起点都 setZoomAndCenter，最后一个生效）
+    if (lastAdded) map.setZoomAndCenter(13, lastAdded.lnglat);
     if (!merge) companySeq = Math.max(companySeq, state.companySeq || 0);
 
     // 圈：merge 时按签名去重（含包内自身重复），非 merge 直接全部回放
