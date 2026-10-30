@@ -1634,6 +1634,8 @@ function renderCircleList() {
         delBtn.textContent = '删';
         delBtn.setAttribute('aria-label', '删除等时圈 ' + c.label);
         delBtn.onclick = function () {
+            if (c._busy || searchRunning || batchRunning) { toast('有任务正在进行，请稍候'); return; }
+            if (!confirm('确定删除「' + c.label + '」？删除后需要重新计算才能恢复。')) return;
             removeCircle(c.id);
             saveState();
         };
