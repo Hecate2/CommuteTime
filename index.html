@@ -1388,8 +1388,9 @@ function addCircleFrom(companyId, mode, minutes, skipSave, opts) {
         circle.polygons = hitPolys;
         hitPolys.forEach(function (poly) { addPolygonOverlay(circle, poly); });
         refreshCircleLabel(circle);
-        fitCircle(circle);
-        afterCirclesChanged(false);
+        // 批量恢复：解压/装配是毫秒级，无需逐圈拉镜头与重算交集，由调用方统一收尾一次
+        if (!(opts && opts.deferFit)) fitCircle(circle);
+        if (!(opts && opts.deferRefresh)) afterCirclesChanged(false);
         if (!skipSave) saveState();
         return;
     }
@@ -2707,9 +2708,11 @@ function saveState() {
 }
 
 /* 应用一份方案状态。
- * merge=false：本机恢复（页面初始为空）——保留原序号/城市，圈按 400ms 节流回放；
+ * merge=false：本机恢复（页面初始为空）——保留原序号/城市；
  * merge=true：方案包导入——追加语义：起点按坐标去重复用、圈按签名去重跳过、
  *             id 一律重新分配，避免与现有对象冲突。
+ * 圈的回放分两路：几何缓存命中的当场同步装配（毫秒级，统一一次 fitView/refreshRegions），
+ * 未命中的才按 400ms 排队查 API，避免触发限流。queued = 需要异步查询的圈数。
  * 返回 {addedCompanies, addedCircles, skipped, queued}（addedCircles 在回放定时器里累计） */
 function applyState(state, merge) {
     var res = { addedCompanies: 0, addedCircles: 0, skipped: 0, queued: 0 };
@@ -2787,6 +2790,7 @@ function applyState(state, merge) {
     }
     var savedCircles = state.circles || [];
     var pending = 0, idx = 0;
+    var batchOverlays = null, batchCount = 0;
     savedCircles.forEach(function (c) {
         if (!c) return;
         var cid = idMap[c.companyId];
@@ -2799,6 +2803,23 @@ function applyState(state, merge) {
         }
         var opts = { color: c.color };
         if (c.precise !== undefined) opts.precise = !!c.precise;   // v2 及更早无此字段 → 沿用勾选框
+        if (typeof LZString !== 'undefined' && geomCache[sig] && geomCache[sig].g) {
+            // 缓存命中：本圈不发 API、纯本地解压装配，无需按 400ms 排队。
+            // 全部静默装入后统一 fitView + refreshRegions 一次，省掉 N 次交集裁剪与 N 次镜头动画。
+            opts.deferFit = true;
+            opts.deferRefresh = true;
+            var before0 = circles.length;
+            addCircleFrom(cid, c.mode, c.minutes, true, opts);
+            if (circles.length > before0) {
+                res.addedCircles++;
+                var nc0 = circles[circles.length - 1];
+                if (c.visible === false || c.useIntersect === false) nc0.visible = false;
+                batchOverlays = nc0.overlays;   // 与旧行为一致：镜头落在最后一个圈
+                batchCount++;
+            }
+            return;
+        }
+        // 未缓存（或缓存失效）：需要真实 API 查询，仍按 400ms 间隔排队，避免触发限流
         pending++;
         var i = idx++;
         setTimeout(function () {
@@ -2814,6 +2835,12 @@ function applyState(state, merge) {
             }
         }, 400 * (i + 1));
     });
+    if (batchCount) {
+        if (batchOverlays && batchOverlays.length) {
+            try { map.setFitView(batchOverlays, false, fitAvoid()); } catch (e) { /* ignore */ }
+        }
+        afterCirclesChanged(false);   // refreshRegions/applyAllVisibility 内部已做，仅算这一次
+    }
     res.queued = pending;
     if (!merge) circleSeq = Math.max(circleSeq, state.circleSeq || 0);
     renderCompanySelects();
@@ -2830,9 +2857,10 @@ function restoreState() {
     try {
         var state = JSON.parse(raw);
         var circlesN = (state.circles || []).length;
-        applyState(state, false);
+        var res = applyState(state, false);
         if (circlesN) {
-            setTimeout(function () { toast('已恢复上次的起点位置与等时圈'); }, 400 * circlesN + 800);
+            // 只等真正需要查 API 的圈；缓存命中的已同步出现
+            setTimeout(function () { toast('已恢复上次的起点位置与等时圈'); }, 400 * res.queued + 800);
         }
     } catch (e) { renderCompanySelects(); /* ignore */ }
 }
