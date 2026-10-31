@@ -196,6 +196,7 @@
             <div class="row" style="margin-top:6px">
                 <button id="exportPkgBtn" class="ghost" title="导出方案包文件：包含全部起点、等时圈与圈几何，纯文本可分享（不含密钥与候选点）">⬇ 导出方案包</button>
                 <button id="importPkgBtn" class="ghost" title="粘贴或选择方案包文件，追加导入起点与等时圈（重复自动跳过）">⬆ 导入方案包</button>
+                <button id="clearCompaniesBtn" class="warn" title="删除全部起点及其等时圈">清空起点</button>
             </div>
         </section>
 
@@ -970,6 +971,10 @@ function updateActionStates() {
     var hasLoaded = circles.some(function (c) { return c.visible !== false && c.polygons && c.polygons.length; });
     searchBtn.disabled = !hasLoaded || anyBusy;
     searchBtn.title = !hasLoaded ? '请先添加至少一个等时圈' : (anyBusy ? busyHint : '');
+    var clearBtn = document.getElementById('clearCompaniesBtn');
+    var hasCompanies = companyList().length > 0;
+    clearBtn.disabled = !hasCompanies || anyBusy;
+    clearBtn.title = !hasCompanies ? '暂无起点' : (anyBusy ? busyHint : '删除全部起点及其等时圈');
     updatePanelSummary();
 }
 updateActionStates();
@@ -1096,6 +1101,7 @@ function initApp() {
     document.getElementById('sortBy').onchange = renderPoiList;
 
     document.getElementById('shareBtn').onclick = shareLink;
+    document.getElementById('clearCompaniesBtn').onclick = clearAllCompanies;
     document.getElementById('exportPkgBtn').onclick = exportPackage;
     document.getElementById('importPkgBtn').onclick = showPkgModal;
     document.getElementById('pkgOkBtn').onclick = onImportPackage;
@@ -1187,6 +1193,26 @@ function removeCompany(id) {
     renderCompanySelects();
     afterCirclesChanged(true);
     saveState();
+}
+
+/* 清空全部起点：与逐个删除等价（级联删圈、清 POI 检索结果），但只确认一次、只刷新一次 */
+function clearAllCompanies() {
+    var list = companyList();
+    if (!list.length) { toast('暂无起点'); return; }
+    if (searchRunning || batchRunning || circlePending > 0) { toast('有任务正在进行，请稍候'); return; }
+    if (!confirm('确定清空全部 ' + list.length + ' 个起点？其下 ' + circles.length + ' 个等时圈也会一并删除，且不可恢复。')) return;
+    list.forEach(function (c) {
+        if (c.marker) c.marker.setMap(null);
+        delete companies[c.id];
+    });
+    circles.forEach(function (c) { c.overlays.forEach(function (o) { o.setMap(null); }); });
+    circles = [];
+    renderCircleList();
+    renderChips();
+    renderCompanySelects();
+    afterCirclesChanged(true);
+    saveState();
+    toast('已清空全部起点与等时圈');
 }
 
 function renderChips() {
@@ -1642,7 +1668,6 @@ function renderCircleList() {
         delBtn.setAttribute('aria-label', '删除等时圈 ' + c.label);
         delBtn.onclick = function () {
             if (c._busy || searchRunning || batchRunning) { toast('有任务正在进行，请稍候'); return; }
-            if (!confirm('确定删除「' + c.label + '」？删除后需要重新计算才能恢复。')) return;
             removeCircle(c.id);
             saveState();
         };
