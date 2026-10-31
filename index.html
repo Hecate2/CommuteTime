@@ -612,15 +612,6 @@ var API_BAD_KEY = /INVALID_USER_KEY|INVALID_USER_SCODE|USER_KEY_PLAT_NOMATCH|SER
 var apiWarnToastAt = 0;
 
 // 统一封装一次高德异步调用：
-/* 高德 JSAPI 2.0 的失败回调有时把错误码直接当 result 字符串返回（如
-   CUQPS_HAS_EXCEEDED_THE_LIMIT / INVALID_USER_DOMAIN），不会放在 info 字段里；
-   统一取出错误文本，保证限流错误能被识别并重试 */
-function amapErrorInfo(result) {
-    if (!result) return '';
-    if (typeof result === 'string') return result;
-    return String(result.info || result.errorInfo || '');
-}
-
 //   opts.run(cb)          发起调用，结果通过 cb(status, result) 回传
 //   opts.isSuccess(s, r)  判定业务成功（如 complete 且确有数据）
 //   opts.onDone(state, r) state ∈ success | empty（调用完成但无数据） | error（失败或重试耗尽）
@@ -645,7 +636,8 @@ function amapRequest(label, opts) {
     }
     function done(status, result) {
         if (opts.isSuccess(status, result)) { opts.onDone('success', result); return; }
-        var info = amapErrorInfo(result);
+        // 失败时高德有时直接返回错误码字符串（如 CUQPS_HAS_EXCEEDED_THE_LIMIT），而非 info 字段
+        var info = typeof result === 'string' ? result : String((result && (result.info || result.errorInfo)) || '');
         if (API_RETRYABLE.test(info) && statusRetries < API_RETRY_MAX) {
             statusRetries++;
             setTimeout(issue, Math.min(400 * Math.pow(2, statusRetries), 8000));
@@ -683,18 +675,23 @@ function schedulePersistCache() {
     persistTimer = setTimeout(persistCommuteCache, 800);
 }
 
-/* ============ 候选地点解析结果缓存（成功即保存；失败不覆盖，下次导入优先复用） ============ */
+/* ============ 候选地点解析缓存：成功即保存，失败不覆盖，下次导入优先复用 ============ */
 var GEO_CACHE_KEY = 'house_tool_geocode_cache';
 var IMPORTED_KEY = 'house_tool_imported_pois';
-var geocodeCache = {};
-var importedPois = [];
-try {
-    geocodeCache = JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || '{}') || {};
-} catch (e) { geocodeCache = {}; }
-try {
-    var storedImports = JSON.parse(localStorage.getItem(IMPORTED_KEY) || '[]');
-    if (Array.isArray(storedImports)) importedPois = storedImports;
-} catch (e) { importedPois = []; }
+
+function loadJson(key, fallback) {
+    try {
+        var v = JSON.parse(localStorage.getItem(key));
+        return v == null ? fallback : v;
+    } catch (e) { return fallback; }
+}
+function saveJson(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* 配额满时静默忽略 */ }
+}
+
+var geocodeCache = loadJson(GEO_CACHE_KEY, {});
+var importedPois = loadJson(IMPORTED_KEY, []);
+if (!Array.isArray(importedPois)) importedPois = [];
 
 function geoKey(kw, city) {
     // 城市去掉「市」后缀，避免 map.getCity 与配置里“上海市/上海”两种写法各存一份
@@ -706,37 +703,27 @@ function poiFromEntry(e) {
 function poiEntry(poi) {
     return { id: poi.id || '', name: poi.name || '', address: poi.address || '', lng: poi.location.lng, lat: poi.location.lat };
 }
-function persistGeocodeCache() {
-    try {
+function entryKey(e) {
+    return e.id || (e.name + '@' + e.lng + ',' + e.lat);
+}
+/* 记录一次成功定位：有关键词时写入检索缓存；同时写入导入点列表供下次启动恢复 */
+function rememberPoi(poi, kw, city) {
+    if (!poi || !poi.location) return;
+    var e = poiEntry(poi);
+    if (kw) {
+        geocodeCache[geoKey(kw, city)] = e;
         var keys = Object.keys(geocodeCache);
-        if (keys.length > 500) {
-            var trimmed = {};
-            keys.slice(-400).forEach(function (k) { trimmed[k] = geocodeCache[k]; });
-            geocodeCache = trimmed;
-        }
-        localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(geocodeCache));
-    } catch (e) { /* 配额满时静默忽略，内存缓存仍可用 */ }
+        if (keys.length > 500) keys.slice(0, keys.length - 400).forEach(function (k) { delete geocodeCache[k]; });
+        saveJson(GEO_CACHE_KEY, geocodeCache);
+    }
+    importedPois = importedPois.filter(function (x) { return entryKey(x) !== entryKey(e); });
+    importedPois = importedPois.concat([e]).slice(-300);
+    saveJson(IMPORTED_KEY, importedPois);
 }
-function rememberGeocode(kw, city, poi) {
-    if (!poi || !poi.location) return;
-    geocodeCache[geoKey(kw, city)] = poiEntry(poi);
-    persistGeocodeCache();
-}
-function rememberImportedPoi(poi) {
-    if (!poi || !poi.location) return;
-    var key = poiKey(poi);
-    importedPois = importedPois.filter(function (e) {
-        return (e.id || (e.name + '@' + e.lng + ',' + e.lat)) !== key;
-    });
-    importedPois.push(poiEntry(poi));
-    if (importedPois.length > 300) importedPois = importedPois.slice(-300);
-    try { localStorage.setItem(IMPORTED_KEY, JSON.stringify(importedPois)); } catch (e) { /* ignore */ }
-}
-/* 启动时把上次导入并定位成功的候选点直接恢复到列表/地图（不再消耗检索配额） */
+/* 启动时恢复上次导入成功的候选点，坐标来自缓存，不再消耗检索配额 */
 function restoreImportedPois() {
     importedPois.forEach(function (e) {
-        if (!e || typeof e.lng !== 'number' || typeof e.lat !== 'number' ||
-            !isFinite(e.lng) || !isFinite(e.lat)) return;
+        if (!e || !Number.isFinite(e.lng) || !Number.isFinite(e.lat)) return;
         var poi = poiFromEntry(e);
         if (!communities[poiKey(poi)]) addCommunity(poi, 'import');
     });
@@ -1017,11 +1004,8 @@ function endCircleWork(circle) {
     circlePending = Math.max(0, circlePending - 1);
     if (circle.precise) precisePending = Math.max(0, precisePending - 1);
     updateActionStates();
-    // 恢复方案时圈几何可能晚于导入候选点就绪，圈补完后刷新归属标签
-    if (Object.keys(communities).length) {
-        refreshMembership();
-        renderPoiList();
-    }
+    // 圈几何补齐后刷新导入点的圈内归属
+    if (Object.keys(communities).length) { refreshMembership(); renderPoiList(); }
 }
 
 function updatePanelSummary() {
@@ -2350,53 +2334,43 @@ function rectSearchPaged(bounds, page, acc, done) {
     });
 }
 
-/* 导入任务：3 次/秒限流仍可能失败，首次跑完后对全部未定位项自动再试一轮；
-   仍有失败则保留条目并显示「重试未定位 N 条」，可反复手动重试 */
+/* 导入：3 次/秒限流仍可能失败，首轮结束后对全部未定位项自动重试一次；
+   仍有失败则显示「重试未定位 N 条」，可反复手动重试 */
 var importRetryItems = [];
 var importRunning = false;
 
 function parseImportLine(line) {
-    var parts = line.split(/[,，]/).map(function (s) { return s.trim(); });
-    if (!parts[0]) return null;
-    return { line: line, kw: parts[0], city: parts[1] || cityName || '全国' };
+    var p = line.split(/[,，]/).map(function (s) { return s.trim(); });
+    return p[0] ? { kw: p[0], city: p[1] || cityName || '全国' } : null;
 }
 
 function updateImportRetryBtn() {
     var btn = document.getElementById('importRetryBtn');
-    if (!btn) return;
-    if (importRetryItems.length) {
-        btn.style.display = '';
-        btn.textContent = '重试未定位 ' + importRetryItems.length + ' 条';
-    } else {
-        btn.style.display = 'none';
-    }
+    btn.style.display = importRetryItems.length ? '' : 'none';
+    btn.textContent = importRetryItems.length ? '重试未定位 ' + importRetryItems.length + ' 条' : '';
 }
 
 function importCandidates() {
-    var text = document.getElementById('importText').value.trim();
-    if (!text) { toast('请先粘贴候选地点清单'); return; }
-    var lines = text.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
-    if (!lines.length) return;
+    var lines = document.getElementById('importText').value.split('\n')
+        .map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!lines.length) { toast('请先粘贴候选地点清单'); return; }
     if (lines.length > 50) { toast('一次最多导入 50 条'); return; }
     if (importRunning || searchRunning || batchRunning) { toast('有任务正在进行，请稍候'); return; }
     var items = lines.map(parseImportLine).filter(Boolean);
-    if (!items.length) return;
-    runImportItems(items);
+    if (items.length) runImportItems(items);
 }
 
 function retryFailedImports() {
     if (importRunning || searchRunning || batchRunning) { toast('有任务正在进行，请稍候'); return; }
-    if (!importRetryItems.length) return;
-    runImportItems(importRetryItems.slice());
+    if (importRetryItems.length) runImportItems(importRetryItems.slice());
 }
 
 function runImportItems(items) {
     importRetryItems = [];
     updateImportRetryBtn();
     importRunning = true;
-    var okCount = 0, cachedCount = 0, failItems = [];
-    var ctrl = { aborted: false };
-    var finished = false;
+    var pending = items.slice(), retrying = false, finished = false, aborted = false;
+    var total = items.length, done = 0, okCount = 0, cachedCount = 0, failItems = [];
 
     function finish(cancelled) {
         if (finished) return;
@@ -2405,7 +2379,7 @@ function runImportItems(items) {
         progressHide();
         refreshMembership();
         renderPoiList();
-        importRetryItems = cancelled ? [] : failItems.slice();
+        importRetryItems = cancelled ? [] : failItems;
         updateImportRetryBtn();
         var msg = (cancelled ? '已取消定位：成功 ' : '定位完成：成功 ') + okCount + ' 条';
         if (cachedCount) msg += '（其中 ' + cachedCount + ' 条来自本地缓存）';
@@ -2418,38 +2392,34 @@ function runImportItems(items) {
     }
 
     progressShow('任意地点检索中…', function () {
-        ctrl.aborted = true;
+        aborted = true;
         finish(true);
     });
 
     function processOne(item, onDone) {
-        // 之前成功定位过的同城同关键词直接复用，不再消耗检索配额；失败不会写缓存
         var cached = geocodeCache[geoKey(item.kw, item.city)];
         if (cached) {
             var cachedPoi = poiFromEntry(cached);
             addCommunity(cachedPoi, 'import');
-            rememberImportedPoi(cachedPoi);
+            rememberPoi(cachedPoi);
             okCount++;
             cachedCount++;
-            onDone();
-            return;
+            return onDone();
         }
-        // '全国'不是真实城市，只能做不限定搜索；只有明确城市名才 citylimit
         amapRequest('地点检索', {
             run: function (cb) {
                 var ps = new AMap.PlaceSearch({ city: item.city, citylimit: item.city !== '全国', pageSize: 1, extensions: 'base' });
                 ps.search(item.kw, cb);
             },
-            isSuccess: function (s, result) {
-                return s === 'complete' && !!(result && result.poiList && result.poiList.pois.length);
+            isSuccess: function (s, r) {
+                return s === 'complete' && !!(r && r.poiList && r.poiList.pois.length);
             },
-            onDone: function (status, result) {
-                if (ctrl.aborted) return;
+            onDone: function (status, r) {
+                if (aborted) return;
                 if (status === 'success') {
-                    var poi = result.poiList.pois[0];
+                    var poi = r.poiList.pois[0];
                     addCommunity(poi, 'import');
-                    rememberGeocode(item.kw, item.city, poi);
-                    rememberImportedPoi(poi);
+                    rememberPoi(poi, item.kw, item.city);
                     okCount++;
                 } else failItems.push(item);
                 onDone();
@@ -2457,34 +2427,30 @@ function runImportItems(items) {
         });
     }
 
-    function runPass(list, isRetry) {
-        var i = 0;
-        (function next() {
-            if (ctrl.aborted) return;
-            if (i >= list.length) {
-                if (!isRetry && failItems.length) {
-                    var retryList = failItems.slice();
-                    failItems = [];
-                    progressUpdate(0, retryList.length, '首次未定位 ' + retryList.length + ' 条，1 秒后自动重试');
-                    setTimeout(function () {
-                        if (!ctrl.aborted) runPass(retryList, true);
-                    }, 1200);
-                    return;
-                }
-                finish(false);
-                return;
+    (function next() {
+        if (aborted) return;
+        if (!pending.length) {
+            if (!retrying && failItems.length) {
+                pending = failItems.slice();
+                failItems = [];
+                retrying = true;
+                total = pending.length;
+                done = 0;
+                progressUpdate(0, total, '首次未定位 ' + total + ' 条，1 秒后自动重试');
+                return setTimeout(next, 1200);
             }
-            var item = list[i++];
-            processOne(item, function () {
-                var label = isRetry ? '重试定位中' : '定位中';
-                if (cachedCount) label += '（缓存 ' + cachedCount + ' 条）';
-                progressUpdate(i, list.length, label);
-                next();
-            });
-        })();
-    }
-
-    runPass(items, false);
+            finish(false);
+            return;
+        }
+        var item = pending.shift();
+        processOne(item, function () {
+            done++;
+            var label = retrying ? '重试定位中' : '定位中';
+            if (cachedCount) label += '（缓存 ' + cachedCount + ' 条）';
+            progressUpdate(done, total, label);
+            next();
+        });
+    })();
 }
 
 function clearCommunities() {
