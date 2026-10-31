@@ -256,16 +256,17 @@
 
         <section>
             <h2>③ 候选地点</h2>
-            <button id="searchPoiBtn">检索圈内地点</button>
-            <button id="batchBtn" class="ghost">批量算通勤</button>
-            <button id="clearPoiBtn" class="ghost">清空</button>
-            <details style="margin-top:4px">
-                <summary>导入自己的候选清单（每行一个地点名，可带城市，逗号分隔）</summary>
-                <textarea id="importText" placeholder="例如：&#10;保利天悦&#10;骏景花园,广州&#10;XX酒店,北京"></textarea>
-                <button id="importBtn" class="ghost">导入并定位</button>
-                <button id="importRetryBtn" class="ghost" style="display:none"></button>
-                <div class="hint">导入后自动判断是否在各等时圈内，再点「批量算通勤」。</div>
-            </details>
+            <div class="row">
+                <button id="searchPoiBtn" title="在已勾选的等时圈范围内检索住宅类地点">通勤圈内检索</button>
+                <button id="importBtn" class="ghost" title="按名单逐个关键词定位，不受等时圈限制">任意地点检索</button>
+            </div>
+            <textarea id="importText" placeholder="每行一个地点名，可带城市：&#10;保利天悦&#10;骏景花园,广州"></textarea>
+            <button id="importRetryBtn" class="ghost" style="display:none"></button>
+            <div class="hint">每行一个地点名，可带城市；检索后自动判断是否在各等时圈内。</div>
+            <div class="row" style="margin-top:4px">
+                <button id="batchBtn" class="ghost">批量算通勤</button>
+                <button id="clearPoiBtn" class="warn" style="margin-left:auto" title="清空全部候选地点">清空</button>
+            </div>
             <div class="row" style="margin-top:8px">
                 <label class="hint" style="flex:0 0 auto">最长通勤 ≤</label>
                 <input type="number" id="filterMax" min="0" placeholder="不限" style="flex:0 0 64px">
@@ -280,7 +281,7 @@
                 <button id="csvBtn" class="ghost">导出结果 CSV</button>
                 <span class="hint" id="poiCount" style="margin:0"></span>
             </div>
-            <div id="poiList"><div class="hint" style="padding:8px 2px">暂无候选地点：先在 ① 设置起点、② 画等时圈，再点上方「检索圈内地点」，或展开导入自己的候选清单。</div></div>
+            <div id="poiList"><div class="hint" style="padding:8px 2px">暂无候选地点：先在 ① 设置起点、② 画等时圈，再点「通勤圈内检索」，或在下方文本框粘贴名单点「任意地点检索」。</div></div>
         </section>
 
         <footer>
@@ -1044,11 +1045,11 @@ function updateActionStates() {
     retimeBtn.title = !circles.length ? '请先添加等时圈' : (anyBusy ? busyHint : '');
     var batchBtn = document.getElementById('batchBtn');
     batchBtn.disabled = !count || anyBusy;
-    batchBtn.title = !count ? '请先检索或导入候选地点' : (anyBusy ? busyHint : '');
+    batchBtn.title = !count ? '请先检索候选地点' : (anyBusy ? busyHint : '');
     var searchBtn = document.getElementById('searchPoiBtn');
     var hasLoaded = circles.some(function (c) { return c.visible !== false && c.polygons && c.polygons.length; });
     searchBtn.disabled = !hasLoaded || anyBusy;
-    searchBtn.title = !hasLoaded ? '请先添加至少一个等时圈' : (anyBusy ? busyHint : '');
+    searchBtn.title = !hasLoaded ? '请先添加至少一个等时圈' : (anyBusy ? busyHint : '在已勾选的等时圈范围内检索住宅类地点');
     var clearBtn = document.getElementById('clearCompaniesBtn');
     var hasCompanies = companyList().length > 0;
     clearBtn.disabled = !hasCompanies || anyBusy;
@@ -2286,7 +2287,7 @@ function searchCommunities() {
             ? '已取消检索，本次新增 ' + grown + ' 个，当前共 ' + now + ' 个候选地点'
             : '检索完成，本次新增 ' + grown + ' 个，当前共 ' + now + ' 个候选地点');
     }
-    progressShow('检索圈内地点…', function () {
+    progressShow('通勤圈内检索中…', function () {
         ctrl.aborted = true;
         finishSearch(true);
     });
@@ -2307,7 +2308,7 @@ function searchCommunities() {
                 }
             });
             doneCount++;
-            progressUpdate(doneCount, total, '检索圈内地点（本圈 ' + inside + ' 个）');
+            progressUpdate(doneCount, total, '通勤圈内检索（本圈 ' + inside + ' 个）');
             setTimeout(nextCircle, 400);
         });
     })();
@@ -2406,7 +2407,7 @@ function runImportItems(items) {
         renderPoiList();
         importRetryItems = cancelled ? [] : failItems.slice();
         updateImportRetryBtn();
-        var msg = (cancelled ? '已取消导入：成功 ' : '导入完成：成功 ') + okCount + ' 条';
+        var msg = (cancelled ? '已取消定位：成功 ' : '定位完成：成功 ') + okCount + ' 条';
         if (cachedCount) msg += '（其中 ' + cachedCount + ' 条来自本地缓存）';
         if (failItems.length) {
             var names = failItems.map(function (it) { return it.kw; });
@@ -2416,7 +2417,7 @@ function runImportItems(items) {
         toast(msg, 4000);
     }
 
-    progressShow('导入定位中…', function () {
+    progressShow('任意地点检索中…', function () {
         ctrl.aborted = true;
         finish(true);
     });
@@ -2475,7 +2476,7 @@ function runImportItems(items) {
             }
             var item = list[i++];
             processOne(item, function () {
-                var label = isRetry ? '重试定位中' : '导入定位中';
+                var label = isRetry ? '重试定位中' : '定位中';
                 if (cachedCount) label += '（缓存 ' + cachedCount + ' 条）';
                 progressUpdate(i, list.length, label);
                 next();
@@ -2658,7 +2659,7 @@ function batchCommute() {
     if (batchRunning) { toast('批量计算正在进行，请稍候'); return; }
     if (searchRunning || circlePending > 0) { toast('有任务正在进行，请稍候'); return; }
     var list = Object.values(communities);
-    if (!list.length) { toast('请先检索或导入候选地点'); return; }
+    if (!list.length) { toast('请先检索候选地点'); return; }
     // 交集/差集独占模式下只算显示区域内的候选（省配额，且与列表所见一致）；
     // 最长通勤筛选是结果过滤器，不作为计算范围（否则未计算项永远算不出来）
     if (regionsActive()) {
@@ -2810,7 +2811,7 @@ function renderPoiList() {
     var list = visiblePoiList();
 
     if (!count) {
-        box.innerHTML = '<div class="hint" style="padding:8px 2px">暂无候选地点：先在 ① 设置起点、② 画等时圈，再点上方「检索圈内地点」，或展开导入自己的候选清单。</div>';
+        box.innerHTML = '<div class="hint" style="padding:8px 2px">暂无候选地点：先在 ① 设置起点、② 画等时圈，再点「通勤圈内检索」，或在下方文本框粘贴名单点「任意地点检索」。</div>';
         updateActionStates();
         return;
     }
