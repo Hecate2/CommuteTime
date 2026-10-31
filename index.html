@@ -1161,6 +1161,7 @@ function addCompany(lnglat, name, skipSave, keepId, opts) {
                     var ac = result.regeocode.addressComponent;
                     mine.city = (typeof ac.city === 'string' && ac.city) ? ac.city : ac.province;
                     if (!cityName && mine.city) cityName = mine.city;
+                    persistCompanyCity(mine);
                 }
             });
         })(item);
@@ -2749,6 +2750,25 @@ function buildState() {
 function saveState() {
     try {
         localStorage.setItem('house_tool_state', JSON.stringify(buildState()));
+    } catch (e) { /* ignore */ }
+}
+
+/* 逆地理成功后只回写存档中同坐标起点的 city 字段：下次恢复即可跳过重复逆地理请求。
+ * 不动圈数据，避免恢复过程中（未命中缓存的圈还在 400ms 排队）整体 saveState 把圈丢掉。 */
+function persistCompanyCity(item) {
+    try {
+        var raw = localStorage.getItem('house_tool_state');
+        if (!raw) return;
+        var state = JSON.parse(raw);
+        if (!Array.isArray(state.companies)) return;
+        var key = coordKey(item.lnglat);
+        var changed = false;
+        state.companies.forEach(function (c) {
+            if (!c || c.city) return;
+            var ck = Number(c.lng).toFixed(5) + ',' + Number(c.lat).toFixed(5);
+            if (ck === key) { c.city = item.city; changed = true; }
+        });
+        if (changed) localStorage.setItem('house_tool_state', JSON.stringify(state));
     } catch (e) { /* ignore */ }
 }
 
